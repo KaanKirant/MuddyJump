@@ -792,7 +792,7 @@ GameObject:
   - component: {fileID: 657489506}
   m_Layer: 0
   m_Name: PipeHitArea
-  m_TagString: Pipe
+  m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -1298,7 +1298,7 @@ GameObject:
   - component: {fileID: 1232463797}
   m_Layer: 0
   m_Name: PipeHinge
-  m_TagString: Untagged
+  m_TagString: Pipe
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -1808,6 +1808,7 @@ MonoBehaviour:
   pipeObject: {fileID: 1232463794}
   health: 3
   actionCooldown: 0.5
+  isKicking: 0
   jumpForce: 18
   slamForce: 5
   fallGravity: 20
