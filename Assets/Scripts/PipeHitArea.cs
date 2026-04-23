@@ -3,30 +3,21 @@ using UnityEngine;
 public class PipeHitArea : MonoBehaviour
 {
     private PipeLogic parentLogic;
-    void Start()
+
+    private void Start()
     {
         parentLogic = GetComponentInParent<PipeLogic>();
     }
 
     private void OnTriggerEnter(Collider other)
     {
-        if (other.gameObject.CompareTag("Player") || other.gameObject.CompareTag("Enemy"))
-        {
-            if (parentLogic != null)
-            {
-                parentLogic.isHitArea = true;
-            }
-        }
+        if (other.CompareTag("Player") || other.CompareTag("Enemy"))
+            parentLogic.isHitArea = true;
     }
 
     private void OnTriggerExit(Collider other)
     {
-        if (other.gameObject.CompareTag("Player") || other.gameObject.CompareTag("Enemy"))
-        {
-            if (parentLogic != null)
-            {
-                parentLogic.isHitArea = false;
-            }
-        }
+        if (other.CompareTag("Player") || other.CompareTag("Enemy"))
+            parentLogic.isHitArea = false;
     }
 }

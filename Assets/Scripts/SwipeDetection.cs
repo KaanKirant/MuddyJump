@@ -10,40 +10,33 @@ public class SwipeDetection : MonoBehaviour
     public event Swipe swipePerformed;
 
     [SerializeField] private InputAction position, press;
-
-    [SerializeField] private float swipeResistance = 100;
+    [SerializeField] private float swipeResistance = 100f;
 
     private Vector2 initialPos;
     private Vector2 currentPos => position.ReadValue<Vector2>();
 
     private void Awake()
     {
+        instance = this;
         position.Enable();
         press.Enable();
-        press.performed += _ => { initialPos = currentPos; };
+        press.performed += _ => initialPos = currentPos;
         press.canceled += _ => DetectSwipe();
-        instance = this;
     }
 
     private void DetectSwipe()
     {
         Vector2 delta = currentPos - initialPos;
-
         Vector2 direction = Vector2.zero;
 
-        if(Mathf.Abs(delta.x) > swipeResistance)
-        {
-            direction.x = Mathf.Clamp(delta.x, -1, 1);
-        }
+        if (Mathf.Abs(delta.x) > swipeResistance)
+            direction.x = Mathf.Clamp(delta.x, -1f, 1f);
 
+        // BUG FIX: was incorrectly clamping delta.x instead of delta.y
         if (Mathf.Abs(delta.y) > swipeResistance)
-        {
-            direction.y = Mathf.Clamp(delta.x, -1, 1);
-        }
+            direction.y = Mathf.Clamp(delta.y, -1f, 1f);
 
-        if(direction != Vector2.zero && swipePerformed != null)
-        {
-            swipePerformed(direction);
-        }
+        if (direction != Vector2.zero)
+            swipePerformed?.Invoke(direction);
     }
 }

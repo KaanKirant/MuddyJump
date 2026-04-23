@@ -5,13 +5,13 @@ public class PlayerMovement : MonoBehaviour
 {
     public GameObject pipeObject;
     public float health = 3f;
-    public float actionCooldown = 0.2f; // Lowered for snappier feel
+    public float actionCooldown = 0.2f;
     public bool isKicking = false;
 
     [Header("Physics Settings")]
-    public float jumpForce = 12f;    // Increased for punchier jump
-    public float slamForce = 18f;    // High slam force for instant floor snap
-    public float fallGravity = 30f;  // Stronger pull when falling
+    public float jumpForce = 12f;
+    public float slamForce = 18f;
+    public float fallGravity = 30f;
 
     private float lastJumpTime;
     private float lastKickTime;
@@ -23,59 +23,41 @@ public class PlayerMovement : MonoBehaviour
 
     private void Awake()
     {
-        // Direct subscription is cleaner
-        SwipeDetection.instance.swipePerformed += Swipe;
-
+        SwipeDetection.instance.swipePerformed += OnSwipe;
         rb = GetComponent<Rigidbody>();
         animator = GetComponent<Animator>();
-
-        // Ensure Rigidbody constraints are set for a runner
         rb.constraints = RigidbodyConstraints.FreezeRotation;
     }
 
     private void FixedUpdate()
     {
-        // Apply heavy gravity only when in air to avoid jitter on ground
         if (!isGrounded)
-        {
             rb.AddForce(Vector3.down * fallGravity, ForceMode.Acceleration);
-        }
     }
 
-    private void Swipe(Vector2 direction)
+    private void OnSwipe(Vector2 direction)
     {
-        // JUMP (Up)
         if (direction.y > 0.5f && isGrounded)
         {
             if (Time.time > lastJumpTime + actionCooldown)
-            {
                 Jump();
-            }
         }
-        // FAST FALL / ROLL (Down) - Note the negative 0.5f
         else if (direction.y < -0.5f && !isGrounded)
         {
             FastFall();
         }
-        // KICK (Sides)
         else if (Mathf.Abs(direction.x) > 0.5f)
         {
             if (Time.time > lastKickTime + actionCooldown)
-            {
                 Kick(direction);
-            }
         }
     }
 
     private void Jump()
     {
-        // Kill existing velocity for instant launch
         rb.linearVelocity = Vector3.zero;
         rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
-
         lastJumpTime = Time.time;
-
-        // Play jump instantly (bypass transition lag)
         animator.Update(0);
         animator.Play("Jump", 0, 0f);
     }
@@ -83,46 +65,41 @@ public class PlayerMovement : MonoBehaviour
     private void FastFall()
     {
         rb.linearVelocity = Vector3.zero;
+        rb.angularVelocity = Vector3.zero;
         rb.AddForce(Vector3.down * slamForce, ForceMode.Impulse);
-
-        // Force the animation
         animator.Update(0);
         animator.Play("Roll", 0, 0f);
-
-        // DISABLE rotation on the Rigidbody completely 
-        // to prevent the animation from 'tipping' the physics capsule
-        rb.angularVelocity = Vector3.zero;
     }
 
     private void Kick(Vector2 dir)
     {
         pipeObject.GetComponent<PipeLogic>().GetKicked(dir);
 
-        // Swipe Right
+        // FIX: animator.Play and SetTrigger were both called redundantly.
+        // Using Play() directly is consistent with Jump() and FastFall().
         if (dir.x > 0.5f)
         {
+            animator.Update(0);
             animator.Play("kickRight", 0, 0f);
-            animator.SetTrigger("kickRight"); // Set trigger for right kick
+            //SetTrigger to change state immediately
         }
-        // Swipe Left
         else if (dir.x < -0.5f)
-        { 
+        {
+            animator.Update(0);
             animator.Play("kickLeft", 0, 0f);
-            animator.SetTrigger("kickLeft"); // Set trigger for right kick
+            //SetTrigger to change state immediately
         }
 
         lastKickTime = Time.time;
     }
 
-    // --- Grounding Logic ---
     private void OnCollisionStay(Collision collision)
     {
         if (collision.gameObject.CompareTag("Ground"))
         {
             if (!isGrounded)
-            {
-                animator.Play("Idle", 0, 0.1f); // 0.1f adds a tiny blend so it's not a hard pop
-            }
+                animator.Play("Idle", 0, 0.1f);
+
             isGrounded = true;
             animator.SetBool("isGround", true);
         }
@@ -137,9 +114,8 @@ public class PlayerMovement : MonoBehaviour
         }
     }
 
-    // Clean up event on destroy
     private void OnDestroy()
     {
-        SwipeDetection.instance.swipePerformed -= Swipe;
+        SwipeDetection.instance.swipePerformed -= OnSwipe;
     }
 }
