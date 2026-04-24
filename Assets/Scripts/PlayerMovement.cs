@@ -73,6 +73,7 @@ public class PlayerMovement : MonoBehaviour
 
     private void Kick(Vector2 dir)
     {
+        if(!isGrounded) return; // Prevent kicking while in the air
         pipeObject.GetComponent<PipeLogic>().GetKicked(dir);
 
         // FIX: animator.Play and SetTrigger were both called redundantly.

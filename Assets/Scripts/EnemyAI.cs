@@ -8,19 +8,37 @@ public class EnemyAI : MonoBehaviour
     public bool isPipeClose = false;
     public float distanceToWait = 25.0f;
 
+    private Animator animator;
+
+    [SerializeField] private bool isGrounded;
+
+
     private void Awake()
     {
         pipeObject = GameObject.FindGameObjectWithTag("Pipe");
+        animator = GetComponent<Animator>();
     }
 
     private void Jump()
     {
         GetComponent<Rigidbody>().AddForce(Vector3.up * 5f, ForceMode.Impulse);
+        animator.Update(0);
+        animator.Play("Jump", 0, 0f);
     }
 
     private void Kick(Vector2 direction)
     {
         pipeObject.GetComponent<PipeLogic>().GetKicked(direction);
+        if(direction == Vector2.right)
+        {
+            animator.Update(0);
+            animator.Play("kickRight", 0, 0f);
+        }
+        else if(direction == Vector2.left)
+        {
+            animator.Update(0);
+            animator.Play("kickLeft", 0, 0f);
+        }
     }
 
     public void DecideAction()
@@ -50,5 +68,26 @@ public class EnemyAI : MonoBehaviour
 
         Vector2 direction = pipe.rotationDirection ? Vector2.right : Vector2.left;
         Kick(direction);
+    }
+
+    private void OnCollisionStay(Collision collision)
+    {
+        if (collision.gameObject.CompareTag("Ground"))
+        {
+            if (!isGrounded)
+                animator.Play("Idle", 0, 0.1f);
+
+            isGrounded = true;
+            animator.SetBool("isGround", true);
+        }
+    }
+
+    private void OnCollisionExit(Collision collision)
+    {
+        if (collision.gameObject.CompareTag("Ground"))
+        {
+            isGrounded = false;
+            animator.SetBool("isGround", false);
+        }
     }
 }

@@ -31,8 +31,13 @@ public class PipeLogic : MonoBehaviour
         else if (collision.gameObject.CompareTag("Enemy"))
         {
             EnemyAI enemy = collision.gameObject.GetComponent<EnemyAI>();
+            Animator enemyAnimator = collision.gameObject.GetComponent<Animator>();
 
             enemy.health -= 1;
+            enemyAnimator.Play(rotationDirection ? "HitReactionRight" : "HitReactionLeft", 1);
+
+            // Optional: Add logic to check if enemy health <= 0 and handle enemy death
+            // Next floor
 
             OnHitResolve();
         }
