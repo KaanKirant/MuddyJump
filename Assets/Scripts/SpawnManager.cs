@@ -7,15 +7,19 @@ public class SpawnManager : MonoBehaviour
     public static SpawnManager instance;
 
     [Header("Enemy Setup")]
-    public GameObject[] enemyPrefabs;       // Drag your enemy prefabs here in the Inspector
-    public Transform[] spawnPoints;         // Drag your spawn point transforms here
+    public GameObject standardEnemyPrefab;
+    public GameObject bossEnemyPrefab;      // Assign a prefab with EnemyAI isBoss = true
+    public Transform[] spawnPoints;
 
     [Header("Spawn Settings")]
-    public int enemiesPerFloor = 1;         // How many enemies to spawn when a floor starts
-    public float delayBetweenSpawns = 0.5f; // Seconds between each spawn when spawning multiple
+    public int maxEnemiesAlive = 3;         // Always keep this many enemies on the floor
+    public int killsToAdvanceFloor = 6;     // Total kills needed to trigger floor clear
+    public float respawnDelay = 1.2f;       // Delay before a replacement spawns after a kill
 
-    // Tracks all enemies alive in the current floor
+    private int currentFloor = 0;
+    private int killsThisFloor = 0;
     private List<GameObject> activeEnemies = new List<GameObject>();
+    private bool floorClearing = false;     // Prevents new spawns during the transition
 
     private void Awake()
     {
@@ -23,75 +27,117 @@ public class SpawnManager : MonoBehaviour
         else Destroy(gameObject);
     }
 
-    // Call this from GameManager when a new floor begins
-    public void SpawnFloor(int floorNumber)
+    // Called by GameManager on each new floor
+    public void StartFloor(int floor)
     {
+        currentFloor = floor;
+        killsThisFloor = 0;
+        floorClearing = false;
         ClearActiveEnemies();
-        StartCoroutine(SpawnSequence(floorNumber));
+
+        // Fill all slots immediately at floor start
+        for (int i = 0; i < maxEnemiesAlive; i++)
+            SpawnEnemy();
     }
 
-    private IEnumerator SpawnSequence(int floorNumber)
-    {
-        // Scale enemy count with floor number — optional, remove if you want fixed count
-        int count = Mathf.Min(enemiesPerFloor + (floorNumber / 3), spawnPoints.Length);
-
-        // Shuffle spawn points so enemies don't always appear in the same spots
-        Transform[] shuffled = ShuffledSpawnPoints();
-
-        for (int i = 0; i < count; i++)
-        {
-            SpawnEnemy(shuffled[i], floorNumber);
-
-            if (i < count - 1)
-                yield return new WaitForSeconds(delayBetweenSpawns);
-        }
-    }
-
-    private void SpawnEnemy(Transform spawnPoint, int floorNumber)
-    {
-        if (enemyPrefabs.Length == 0 || spawnPoints.Length == 0)
-        {
-            Debug.LogWarning("SpawnManager: No enemy prefabs or spawn points assigned.");
-            return;
-        }
-
-        // Pick a random prefab from the array
-        GameObject prefab = enemyPrefabs[Random.Range(0, enemyPrefabs.Length)];
-        GameObject enemy = Instantiate(prefab, spawnPoint.position, spawnPoint.rotation);
-
-        // Scale enemy health with floor number
-        EnemyAI ai = enemy.GetComponent<EnemyAI>();
-        if (ai != null)
-            ai.health = 3 + floorNumber; // Floor 1 = 4hp, floor 5 = 8hp, etc.
-
-        activeEnemies.Add(enemy);
-    }
-
-    // Call this from EnemyAI when an enemy dies
+    // Called by EnemyAI.TakeDamage when health hits 0
     public void OnEnemyDied(GameObject enemy)
     {
         activeEnemies.Remove(enemy);
         Destroy(enemy);
+        killsThisFloor++;
 
-        if (activeEnemies.Count == 0)
+        if (killsThisFloor >= killsToAdvance())
         {
-            Debug.Log("All enemies defeated — floor clear!");
-            GameManager.instance.NextFloor();
+            if (!floorClearing)
+            {
+                floorClearing = true;
+                ClearActiveEnemies();
+                GameManager.instance.NextFloor();
+            }
+            return;
         }
+
+        // Floor not done — fill the empty slot after a short delay
+        if (!floorClearing)
+            StartCoroutine(RespawnAfterDelay());
     }
 
-    // Destroys any leftover enemies from a previous floor before spawning new ones
+    private IEnumerator RespawnAfterDelay()
+    {
+        yield return new WaitForSeconds(respawnDelay);
+        if (!floorClearing)
+            SpawnEnemy();
+    }
+
+    private void SpawnEnemy()
+    {
+        if (spawnPoints.Length == 0)
+        {
+            Debug.LogWarning("SpawnManager: No spawn points assigned.");
+            return;
+        }
+
+        // Pick a spawn point that doesn't already have an enemy on it
+        Transform point = GetFreeSpawnPoint();
+        if (point == null) return;
+
+        bool isBossFloor = currentFloor % 10 == 0 && currentFloor > 0;
+        GameObject prefab = (isBossFloor && bossEnemyPrefab != null)
+            ? bossEnemyPrefab
+            : standardEnemyPrefab;
+
+        GameObject enemy = Instantiate(prefab, point.position, point.rotation);
+        EnemyAI ai = enemy.GetComponent<EnemyAI>();
+
+        if (ai != null)
+        {
+            // Scale health with floor — boss gets extra
+            ai.health = isBossFloor
+                ? 6 + currentFloor / 2
+                : 3 + currentFloor / 3;
+
+            ai.currentFloor = currentFloor;
+            ai.isBoss = isBossFloor;
+        }
+
+        activeEnemies.Add(enemy);
+    }
+
+    // Kills required scales with floor so early floors feel easy
+    private int killsToAdvance()
+    {
+        return killsToAdvanceFloor + currentFloor;
+    }
+
+    private Transform GetFreeSpawnPoint()
+    {
+        // Shuffle and return first point that isn't too close to an active enemy
+        Transform[] shuffled = ShuffledSpawnPoints();
+        foreach (Transform point in shuffled)
+        {
+            bool occupied = false;
+            foreach (GameObject e in activeEnemies)
+            {
+                if (e != null && Vector3.Distance(e.transform.position, point.position) < 1.5f)
+                {
+                    occupied = true;
+                    break;
+                }
+            }
+            if (!occupied) return point;
+        }
+        // Fallback: just use a random point
+        return shuffled[0];
+    }
+
     private void ClearActiveEnemies()
     {
         foreach (GameObject enemy in activeEnemies)
-        {
-            if (enemy != null)
-                Destroy(enemy);
-        }
+            if (enemy != null) Destroy(enemy);
         activeEnemies.Clear();
     }
 
-    // Fisher-Yates shuffle on a copy of the spawnPoints array
     private Transform[] ShuffledSpawnPoints()
     {
         Transform[] copy = (Transform[])spawnPoints.Clone();
