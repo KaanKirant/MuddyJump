@@ -1,36 +1,55 @@
-using System.Collections;
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.SceneManagement;
 
 public class GameManager : MonoBehaviour
 {
     public static GameManager instance;
 
+    // ─── UI ───────────────────────────────────────────────────────────────────
     [Header("UI")]
     public GameObject gameOverUI;
-    public GameObject winUI;
 
-    [Header("Floor / Elevation")]
+    // ─── Platform ─────────────────────────────────────────────────────────────
+    [Header("Platform")]
     public Transform platformRoot;
-    public float floorRiseHeight = 10f;
-    public float riseSpeed = 4f;
 
+    [Header("Platform Speed")]
+    public float baseRiseSpeed = 2f;     // Units/sec at game start
+    public float maxRiseSpeed = 12f;    // Hard cap
+    public float speedRampRate = 0.05f;  // Speed added per second (linear ramp)
+
+    // ─── Pipe Difficulty ──────────────────────────────────────────────────────
     [Header("Pipe Difficulty")]
     public PipeLogic mainPipe;
     public PipeLogic secondPipe;
-    public int secondPipeUnlockFloor = 20;
     public float basePipeSpeed = 50f;
-    public float pipeSpeedIncreasePerFloor = 2f;
     public float maxPipeSpeed = 120f;
+    [Tooltip("How strongly pipe speed tracks difficulty. 1 = full scale.")]
+    public float pipeSpeedDifficultyScale = 1f;
 
+    [Header("Second Pipe")]
+    [Tooltip("World units traveled before second pipe activates.")]
+    public float secondPipeUnlockDistance = 100f;
+    public float secondPipeSpeedRatio = 0.75f;
+
+    // ─── Camera ───────────────────────────────────────────────────────────────
     [Header("Camera")]
     public CameraController cameraController;
 
-    public bool isGameActive { get; private set; } = true;
-    public int score { get; private set; }
-    public int currentFloor { get; private set; }
+    // ─── Public State ─────────────────────────────────────────────────────────
+    public float DistanceTraveled { get; private set; }
+    public int BonusScore { get; private set; }
+    public int TotalScore => Mathf.FloorToInt(DistanceTraveled) + BonusScore;
+    public float CurrentRiseSpeed { get; private set; }
+    public bool IsGameActive { get; private set; } = true;
 
-    private float _currentFloorWorldY;
+    // Normalised 0→1 difficulty — single source of truth for all systems
+    public float DifficultyNormalized =>
+        Mathf.InverseLerp(baseRiseSpeed, maxRiseSpeed, CurrentRiseSpeed);
+
+    private bool _secondPipeUnlocked;
+
+    // ─────────────────────────────────────────────────────────────────────────
 
     private void Awake()
     {
@@ -40,85 +59,102 @@ public class GameManager : MonoBehaviour
 
     private void Start()
     {
+        CurrentRiseSpeed = baseRiseSpeed;
+
         if (secondPipe != null)
             secondPipe.gameObject.SetActive(false);
 
-        NextFloor();
+        SpawnManager.instance.StartSpawning();
     }
 
-    public void NextFloor()
+    private void Update()
     {
-        currentFloor++;
-        Debug.Log($"[GameManager] Floor {currentFloor} started.");
+        if (!IsGameActive) return;
 
-        ApplyDifficulty();
-        StartCoroutine(RiseToNextFloor());
+        RisePlatform();
+        RampDifficulty();
+        CheckSecondPipe();
     }
 
-    private void ApplyDifficulty()
+    // ─── Platform ─────────────────────────────────────────────────────────────
+
+    private void RisePlatform()
     {
-        float newSpeed = Mathf.Clamp(
-            basePipeSpeed + pipeSpeedIncreasePerFloor * currentFloor,
-            basePipeSpeed,
-            maxPipeSpeed
+        float delta = CurrentRiseSpeed * Time.deltaTime;
+
+        if (platformRoot != null)
+            platformRoot.position += Vector3.up * delta;
+
+        DistanceTraveled += delta;
+
+        // Camera tracks platform Y every frame
+        if (cameraController != null)
+            cameraController.RiseToFloor(platformRoot != null
+                ? platformRoot.position.y
+                : DistanceTraveled);
+    }
+
+    // ─── Difficulty ───────────────────────────────────────────────────────────
+
+    private void RampDifficulty()
+    {
+        CurrentRiseSpeed = Mathf.Min(
+            CurrentRiseSpeed + speedRampRate * Time.deltaTime,
+            maxRiseSpeed
         );
 
-        mainPipe.rotationSpeed = newSpeed;
+        // Pipe speed lerps between base and max using the same normalised t
+        float t = DifficultyNormalized * pipeSpeedDifficultyScale;
+        float pipeSpeed = Mathf.Lerp(basePipeSpeed, maxPipeSpeed, t);
 
-        if (secondPipe != null && currentFloor >= secondPipeUnlockFloor)
-        {
-            secondPipe.gameObject.SetActive(true);
-            secondPipe.rotationSpeed = newSpeed * 0.75f;
-        }
+        if (mainPipe != null)
+            mainPipe.rotationSpeed = pipeSpeed;
+
+        if (_secondPipeUnlocked && secondPipe != null)
+            secondPipe.rotationSpeed = pipeSpeed * secondPipeSpeedRatio;
     }
 
-    private IEnumerator RiseToNextFloor()
+    private void CheckSecondPipe()
     {
-        if (platformRoot == null)
-        {
-            SpawnManager.instance.StartFloor(currentFloor);
-            yield break;
-        }
+        if (_secondPipeUnlocked || secondPipe == null) return;
+        if (DistanceTraveled < secondPipeUnlockDistance) return;
 
-        Vector3 start = platformRoot.position;
-        Vector3 target = start + Vector3.up * floorRiseHeight;
-        float duration = floorRiseHeight / riseSpeed;
-        float elapsed = 0f;
-
-        _currentFloorWorldY += floorRiseHeight;
-        cameraController?.RiseToFloor(_currentFloorWorldY);
-
-        while (elapsed < duration)
-        {
-            elapsed += Time.deltaTime;
-            platformRoot.position = Vector3.Lerp(start, target, elapsed / duration);
-            yield return null;
-        }
-
-        platformRoot.position = target;
-        SpawnManager.instance.StartFloor(currentFloor);
+        _secondPipeUnlocked = true;
+        secondPipe.gameObject.SetActive(true);
+        Debug.Log("[GameManager] Second pipe unlocked.");
     }
+
+    // ─── Score ────────────────────────────────────────────────────────────────
+
+    // For kicks, kills, and any other bonus events
+    public void AddBonusScore(int amount)
+    {
+        if (!IsGameActive) return;
+        BonusScore += amount;
+    }
+
+    // ─── Game Over ────────────────────────────────────────────────────────────
 
     public void EndGame()
     {
-        if (!isGameActive) return;
-        isGameActive = false;
+        if (!IsGameActive) return;
+        IsGameActive = false;
+
+        SpawnManager.instance.StopSpawning();
+
+        // Stop pipes
+        if (mainPipe != null) mainPipe.enabled = false;
+        if (secondPipe != null) secondPipe.enabled = false;
 
         if (gameOverUI != null) gameOverUI.SetActive(true);
         Time.timeScale = 0f;
-        Debug.Log("[GameManager] Game Over.");
+
+        Debug.Log($"[GameManager] Game Over. Score: {TotalScore}");
     }
 
     public void RestartGame()
     {
         Time.timeScale = 1f;
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
-    }
-
-    public void AddScore(int amount)
-    {
-        if (!isGameActive) return;
-        score += amount;
-        Debug.Log($"[GameManager] Score: {score}");
     }
 }

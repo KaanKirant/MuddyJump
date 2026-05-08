@@ -6,24 +6,36 @@ public class SpawnManager : MonoBehaviour
 {
     public static SpawnManager instance;
 
+    // ─── Enemy Setup ──────────────────────────────────────────────────────────
     [Header("Enemy Setup")]
     public GameObject standardEnemyPrefab;
-    public GameObject bossEnemyPrefab;
     public Transform[] spawnPoints;
 
+    // ─── Spawn Settings ───────────────────────────────────────────────────────
     [Header("Spawn Settings")]
+    [Tooltip("Max enemies alive at once.")]
     public int maxEnemiesAlive = 3;
-    public int killsToAdvanceFloor = 6;
-    public float respawnDelay = 1.2f;
 
-    private int _currentFloor;
-    private int _killsThisFloor;
-    private bool _floorClearing;
+    [Tooltip("Seconds between spawns at difficulty 0.")]
+    public float baseSpawnInterval = 3f;
 
+    [Tooltip("Seconds between spawns at difficulty 1 (max).")]
+    public float minSpawnInterval = 0.8f;
+
+    // ─── Enemy Scaling ────────────────────────────────────────────────────────
+    [Header("Enemy Scaling")]
+    public int baseEnemyHealth = 3;
+    [Tooltip("Extra HP added per unit of DifficultyNormalized (0→1).")]
+    public int healthScaleBonus = 4;
+
+    // ─── State ────────────────────────────────────────────────────────────────
     private readonly List<GameObject> _activeEnemies = new List<GameObject>();
+    private Coroutine _spawnLoop;
+    private bool _running;
 
-    // Occupied-radius check uses sqrMagnitude — avoids sqrt per frame
     private const float OccupiedDistanceSqr = 1.5f * 1.5f;
+
+    // ─────────────────────────────────────────────────────────────────────────
 
     private void Awake()
     {
@@ -31,45 +43,57 @@ public class SpawnManager : MonoBehaviour
         else Destroy(gameObject);
     }
 
-    // Called by GameManager when a new floor begins
-    public void StartFloor(int floor)
+    // ─── Public API ───────────────────────────────────────────────────────────
+
+    public void StartSpawning()
     {
-        _currentFloor = floor;
-        _killsThisFloor = 0;
-        _floorClearing = false;
-
-        ClearActiveEnemies();
-
-        for (int i = 0; i < maxEnemiesAlive; i++)
-            SpawnEnemy();
+        _running = true;
+        if (_spawnLoop != null) StopCoroutine(_spawnLoop);
+        _spawnLoop = StartCoroutine(SpawnLoop());
     }
 
-    // Called by EnemyAI when health hits 0
+    public void StopSpawning()
+    {
+        _running = false;
+        if (_spawnLoop != null) { StopCoroutine(_spawnLoop); _spawnLoop = null; }
+        ClearActiveEnemies();
+    }
+
+    // Called by EnemyAI when health reaches 0
     public void OnEnemyDied(GameObject enemy)
     {
         _activeEnemies.Remove(enemy);
         Destroy(enemy);
-        _killsThisFloor++;
 
-        if (_killsThisFloor >= KillsToAdvance())
-        {
-            if (_floorClearing) return;
-            _floorClearing = true;
-            ClearActiveEnemies();
-            GameManager.instance.NextFloor();
-            return;
-        }
-
-        if (!_floorClearing)
-            StartCoroutine(RespawnAfterDelay());
+        // Bonus score for kill
+        GameManager.instance.AddBonusScore(5);
     }
 
-    private IEnumerator RespawnAfterDelay()
+    // ─── Spawn Loop ───────────────────────────────────────────────────────────
+
+    // Continuously spawns enemies on an interval that shrinks with difficulty.
+    // Respects maxEnemiesAlive as a hard cap — waits if the arena is full.
+    private IEnumerator SpawnLoop()
     {
-        yield return new WaitForSeconds(respawnDelay);
-        if (!_floorClearing)
+        while (_running)
+        {
+            // Wait for a slot to open if we're at cap
+            yield return new WaitUntil(() => ActiveEnemyCount() < maxEnemiesAlive || !_running);
+
+            if (!_running) yield break;
+
             SpawnEnemy();
+
+            float interval = Mathf.Lerp(
+                baseSpawnInterval,
+                minSpawnInterval,
+                GameManager.instance.DifficultyNormalized
+            );
+            yield return new WaitForSeconds(interval);
+        }
     }
+
+    // ─── Spawning ─────────────────────────────────────────────────────────────
 
     private void SpawnEnemy()
     {
@@ -82,25 +106,29 @@ public class SpawnManager : MonoBehaviour
         Transform point = GetFreeSpawnPoint();
         if (point == null) return;
 
-        bool isBossFloor = _currentFloor % 10 == 0 && _currentFloor > 0;
-        GameObject prefab = isBossFloor && bossEnemyPrefab != null
-            ? bossEnemyPrefab
-            : standardEnemyPrefab;
-
-        GameObject enemy = Instantiate(prefab, point.position, point.rotation);
+        GameObject enemy = Instantiate(standardEnemyPrefab, point.position, point.rotation);
         EnemyAI ai = enemy.GetComponent<EnemyAI>();
 
         if (ai != null)
         {
-            ai.health = isBossFloor ? 6 + _currentFloor / 2 : 3 + _currentFloor / 3;
-            ai.currentFloor = _currentFloor;
-            ai.isBoss = isBossFloor;
+            // Scale health with difficulty
+            float d = GameManager.instance.DifficultyNormalized;
+            ai.health = baseEnemyHealth + Mathf.RoundToInt(healthScaleBonus * d);
+            ai.isBoss = false;
         }
 
         _activeEnemies.Add(enemy);
     }
 
-    private int KillsToAdvance() => killsToAdvanceFloor + _currentFloor;
+    // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    private int ActiveEnemyCount()
+    {
+        // Prune destroyed entries while counting
+        for (int i = _activeEnemies.Count - 1; i >= 0; i--)
+            if (_activeEnemies[i] == null) _activeEnemies.RemoveAt(i);
+        return _activeEnemies.Count;
+    }
 
     private Transform GetFreeSpawnPoint()
     {
@@ -111,7 +139,6 @@ public class SpawnManager : MonoBehaviour
             Transform point = spawnPoints[(startIndex + i) % spawnPoints.Length];
             bool occupied = false;
 
-            // Iterate backwards so we can safely prune null entries in-place
             for (int j = _activeEnemies.Count - 1; j >= 0; j--)
             {
                 if (_activeEnemies[j] == null) { _activeEnemies.RemoveAt(j); continue; }
@@ -125,14 +152,13 @@ public class SpawnManager : MonoBehaviour
             if (!occupied) return point;
         }
 
-        // All points occupied — fall back to the random start point
         return spawnPoints[startIndex];
     }
 
     private void ClearActiveEnemies()
     {
-        foreach (GameObject enemy in _activeEnemies)
-            if (enemy != null) Destroy(enemy);
+        foreach (GameObject e in _activeEnemies)
+            if (e != null) Destroy(e);
         _activeEnemies.Clear();
     }
 }

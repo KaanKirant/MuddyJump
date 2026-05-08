@@ -21,16 +21,17 @@ public class EnemyAI : MonoBehaviour
     [Header("Invincibility")]
     public float kickInvincibilityDuration = 0.5f;
 
-    // Boss gets a one-time speed multiplier bump per kick
     private float KickSpeedBonus => isBoss ? 1.5f : 1f;
 
     private PipeLogic _pipe;
     private Animator _animator;
     private Rigidbody _rb;
 
+    // Direction decided at kick-start, consumed at OnKickImpact
+    private Vector2 _pendingKickDirection;
+
     [SerializeField] private bool isGrounded;
 
-    // Cached animator hashes
     private static readonly int IsGroundHash = Animator.StringToHash("isGround");
 
     private void Awake()
@@ -42,16 +43,16 @@ public class EnemyAI : MonoBehaviour
 
     public void DecideAction()
     {
-        // hesitateChance decreases with floor; kickChance increases — enemy becomes more aggressive
-        float hesitateChance = Mathf.Clamp(0.3f - currentFloor * 0.015f, 0f, 0.3f);
-        float kickChance = Mathf.Clamp(0.4f + currentFloor * 0.01f, 0f, 0.75f);
+        float difficulty = GameManager.instance != null ? GameManager.instance.DifficultyNormalized : 0f;
+        float hesitateChance = Mathf.Clamp(0.3f - difficulty * 0.3f, 0f, 0.3f);
+        float kickChance = Mathf.Clamp(0.4f + difficulty * 0.35f, 0f, 0.75f);
         float roll = Random.value;
 
         if (roll < kickChance)
             TryKick();
         else if (roll < 1f - hesitateChance)
             DoJump();
-        // else: hesitate / do nothing
+        // else: hesitate
     }
 
     private void DoJump()
@@ -60,43 +61,49 @@ public class EnemyAI : MonoBehaviour
         _animator.Play("Jump", 0, 0f);
     }
 
+    // ── Step 1: decide direction, play animation — pipe NOT touched yet ───────
     private void TryKick()
     {
         if (_pipe == null) return;
 
+        // Snapshot the pipe direction NOW so the animation visually matches intent.
+        // Pipe interaction is deferred to OnKickImpact so the effect lands at the
+        // same frame the foot visually strikes — identical to the player flow.
+        _pendingKickDirection = _pipe.rotationDirection ? Vector2.right : Vector2.left;
+        _animator.Play(_pendingKickDirection == Vector2.right ? "kickRight" : "kickLeft", 0, 0f);
+    }
+
+    public void OnKickWindowOpen() => OnKickImpact();
+
+    public void OnKickWindowClose() => OnKickImpact();
+
+    // ── Step 2: animation event fires at foot-strike frame ────────────────────
+    public void OnKickImpact()
+    {
+        if (_pipe == null) return;
+
+        // Range check at impact frame — enemy must actually be close enough
         Vector3 origin = kickPoint != null ? kickPoint.position : transform.position;
         bool pipeInRange = Physics.CheckSphere(origin, kickRange, pipeLayer);
+        if (!pipeInRange) return;
 
-        if (!pipeInRange)
-        {
-            // Miss animation — play kick in current pipe direction for visual consistency
-            _animator.Play(_pipe.rotationDirection ? "kickRight" : "kickLeft", 0, 0f);
-            return;
-        }
-
-        Vector2 liveDirection = _pipe.rotationDirection ? Vector2.right : Vector2.left;
         bool landed;
 
         if (isBoss)
         {
             float original = _pipe.rotationSpeedMultiplier;
             _pipe.rotationSpeedMultiplier = original * KickSpeedBonus;
-            landed = _pipe.GetKicked(liveDirection);
+            landed = _pipe.GetKicked(_pendingKickDirection);
             _pipe.rotationSpeedMultiplier = original;
         }
         else
         {
-            landed = _pipe.GetKicked(liveDirection);
+            landed = _pipe.GetKicked(_pendingKickDirection);
         }
-
-        _animator.Play(liveDirection == Vector2.right ? "kickRight" : "kickLeft", 0, 0f);
 
         if (landed)
             StartCoroutine(KickInvincibility());
     }
-
-    // Kept for animation event compatibility — intentionally empty
-    public void OnKickImpact() { }
 
     public void TakeDamage(int amount)
     {
@@ -117,7 +124,6 @@ public class EnemyAI : MonoBehaviour
     {
         if (!collision.gameObject.CompareTag("Ground")) return;
         if (!isGrounded) _animator.Play("Idle", 0, 0.1f);
-
         isGrounded = true;
         _animator.SetBool(IsGroundHash, true);
     }

@@ -10,37 +10,36 @@ public class CameraController : MonoBehaviour
     public float followSmoothTime = 0.1f;
     public float verticalDeadzone = 0.5f;
 
-    [Header("Floor Rise")]
-    public float riseSpeed = 4f;    // Should match GameManager.riseSpeed
-
+    // RiseToFloor is now called every frame from GameManager with the live platform Y,
+    // so riseSpeed is no longer needed — we just track the given target directly.
+    private float _targetY;
     private Vector3 _velocity;
-    private float _floorBaseY;    // Current interpolated floor height
-    private float _targetFloorY;  // Next floor Y we're rising toward
 
     private void LateUpdate()
     {
         if (player == null) return;
 
-        _floorBaseY = Mathf.MoveTowards(_floorBaseY, _targetFloorY, riseSpeed * Time.deltaTime);
-
         Vector3 target = new Vector3(
-            0f,                                             // Arena is circular — lock X
-            _floorBaseY + offset.y + GetVerticalOffset(),
+            0f,                                              // Arena is circular — lock X
+            _targetY + offset.y + GetVerticalOffset(),
             offset.z
         );
 
-        transform.position = Vector3.SmoothDamp(transform.position, target, ref _velocity, followSmoothTime);
+        transform.position = Vector3.SmoothDamp(
+            transform.position, target, ref _velocity, followSmoothTime
+        );
     }
 
-    // Follows the player vertically only beyond the deadzone,
-    // so small ground bumps don't jitter the camera.
+    // Follows the player vertically only when they move beyond the deadzone,
+    // so minor ground bumps don't jitter the camera.
     private float GetVerticalOffset()
     {
-        float diff = player.position.y - _floorBaseY;
+        float diff = player.position.y - _targetY;
         if (Mathf.Abs(diff) < verticalDeadzone) return 0f;
         return diff - Mathf.Sign(diff) * verticalDeadzone;
     }
 
-    // Called by GameManager before the rise starts
-    public void RiseToFloor(float newFloorY) => _targetFloorY = newFloorY;
+    // GameManager calls this every frame (or on floor transitions).
+    // Accepts the live platform world Y directly.
+    public void RiseToFloor(float newTargetY) => _targetY = newTargetY;
 }
