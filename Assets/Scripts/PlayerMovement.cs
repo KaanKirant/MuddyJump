@@ -1,173 +1,326 @@
 using System.Collections;
 using UnityEngine;
 
+[RequireComponent(typeof(Rigidbody))]
+[RequireComponent(typeof(Animator))]
 public class PlayerMovement : MonoBehaviour
 {
-    public float health = 3f;
-    public float actionCooldown = 0.2f;
-    public bool isKicking = false;
-    public bool isInvincible = false;
+    [Header("Player Stats")]
+    [SerializeField] private float health = 3f;
+    [SerializeField] private float actionCooldown = 0.2f;
 
     [Header("Physics Settings")]
-    public float jumpForce = 12f;
-    public float slamForce = 18f;
-    public float fallGravity = 30f;
+    [SerializeField] private float jumpForce = 12f;
+    [SerializeField] private float slamForce = 18f;
+    [SerializeField] private float fallGravity = 30f;
 
     [Header("Kick Settings")]
-    public float kickRange = 1.5f;
-    public float kickHeightOffset = 0.5f;   // How far below center to check (foot level)
-    public LayerMask pipeLayer;
+    [SerializeField] private float kickRange = 1.5f;
+    [SerializeField] private float kickHeightOffset = 0.5f;
+    [SerializeField] private LayerMask pipeLayer;
+    [SerializeField] private float kickDuration = 0.25f;
 
     [Header("Invincibility")]
-    public float kickInvincibilityDuration = 0.4f;
+    [SerializeField] private float kickInvincibilityDuration = 0.4f;
 
-    private float lastJumpTime;
-    private float lastKickTime;
+    [Header("Debug")]
+    [SerializeField] private bool isGrounded;
+
+    public bool IsKicking { get; private set; }
+    public bool IsInvincible { get; private set; }
 
     private Rigidbody rb;
     private Animator animator;
     private PipeLogic pipe;
 
-    [SerializeField] private bool isGrounded;
+    private Vector2 currentKickDirection;
+
+    private float lastJumpTime;
+    private float lastKickTime;
+
+    private Coroutine invincibilityRoutine;
+    private Coroutine kickRoutine;
+
+    private readonly Collider[] kickHits = new Collider[4];
+
+    // Animator hashes
+    private static readonly int IsGroundHash = Animator.StringToHash("isGround");
+
+    private static readonly int JumpHash = Animator.StringToHash("Jump");
+    private static readonly int RollHash = Animator.StringToHash("Roll");
+    private static readonly int KickRightHash = Animator.StringToHash("kickRight");
+    private static readonly int KickLeftHash = Animator.StringToHash("kickLeft");
+    private static readonly int IdleHash = Animator.StringToHash("Idle");
+
+    #region Unity Lifecycle
 
     private void Awake()
     {
-        SwipeDetection.instance.swipePerformed += OnSwipe;
         rb = GetComponent<Rigidbody>();
         animator = GetComponent<Animator>();
+
         rb.constraints = RigidbodyConstraints.FreezeRotation
                        | RigidbodyConstraints.FreezePositionX
                        | RigidbodyConstraints.FreezePositionZ;
+
         pipe = FindAnyObjectByType<PipeLogic>();
+    }
+
+    private void OnEnable()
+    {
+        if (SwipeDetection.Instance != null)
+            SwipeDetection.Instance.SwipePerformed += OnSwipe;
+    }
+
+    private void OnDisable()
+    {
+        if (SwipeDetection.Instance != null)
+            SwipeDetection.Instance.SwipePerformed -= OnSwipe;
     }
 
     private void FixedUpdate()
     {
         if (!isGrounded)
+        {
             rb.AddForce(Vector3.down * fallGravity, ForceMode.Acceleration);
+        }
     }
+
+    #endregion
+
+    #region Input
 
     private void OnSwipe(Vector2 direction)
     {
-        if (direction.y > 0.5f && isGrounded)
+        if (direction.y > 0.5f)
         {
-            if (Time.time > lastJumpTime + actionCooldown)
-                Jump();
+            TryJump();
+            return;
         }
-        else if (direction.y < -0.5f && !isGrounded)
+
+        if (direction.y < -0.5f)
         {
-            FastFall();
+            TryFastFall();
+            return;
         }
-        else if (Mathf.Abs(direction.x) > 0.5f && isGrounded)
+
+        if (Mathf.Abs(direction.x) > 0.5f)
         {
-            if (Time.time > lastKickTime + actionCooldown)
-                Kick(direction);
+            TryKick(direction);
         }
+    }
+
+    #endregion
+
+    #region Actions
+
+    private void TryJump()
+    {
+        if (!isGrounded)
+            return;
+
+        if (Time.time < lastJumpTime + actionCooldown)
+            return;
+
+        Jump();
     }
 
     private void Jump()
     {
-        rb.linearVelocity = Vector3.zero;
-        rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
         lastJumpTime = Time.time;
-        animator.Update(0);
-        animator.Play("Jump", 0, 0f);
+
+        Vector3 velocity = rb.linearVelocity;
+        velocity.y = 0f;
+        rb.linearVelocity = velocity;
+
+        rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
+
+        animator.CrossFade(JumpHash, 0.05f);
+    }
+
+    private void TryFastFall()
+    {
+        if (isGrounded)
+            return;
+
+        FastFall();
     }
 
     private void FastFall()
     {
-        rb.linearVelocity = Vector3.zero;
+        Vector3 velocity = rb.linearVelocity;
+        velocity.y = 0f;
+        rb.linearVelocity = velocity;
+
         rb.angularVelocity = Vector3.zero;
+
         rb.AddForce(Vector3.down * slamForce, ForceMode.Impulse);
-        animator.Update(0);
-        animator.Play("Roll", 0, 0f);
+
+        animator.CrossFade(RollHash, 0.05f);
     }
 
-    private void Kick(Vector2 dir)
+    private void TryKick(Vector2 direction)
+    {
+        if (!isGrounded)
+            return;
+
+        if (Time.time < lastKickTime + actionCooldown)
+            return;
+
+        Kick(direction);
+    }
+
+    private void Kick(Vector2 direction)
     {
         lastKickTime = Time.time;
 
-        // Check at foot level — offset below center
-        Vector3 kickOrigin = transform.position - new Vector3(0f, kickHeightOffset, 0f);
-        Collider[] hits = Physics.OverlapSphere(kickOrigin, kickRange, pipeLayer);
+        currentKickDirection = direction;
 
-        bool landed = false;
-        if (hits.Length > 0 && pipe != null)
-        {
-            // Directional check: swipe must match pipe's current rotation direction
-            // Right swipe only works if pipe is going clockwise (rotationDirection = true)
-            // Left swipe only works if pipe is going counter-clockwise
-            bool validDirection = (dir.x > 0f && pipe.rotationDirection) ||
-                                  (dir.x < 0f && !pipe.rotationDirection);
+        if (kickRoutine != null)
+            StopCoroutine(kickRoutine);
 
-            if (validDirection)
-            {
-                landed = pipe.GetKicked(dir);
-                if (landed)
-                {
-                    GameManager.instance.AddScore(1);
-                    StartCoroutine(KickInvincibility());
-                }
-            }
-        }
+        kickRoutine = StartCoroutine(KickStateRoutine());
 
-        // Always play animation — swipe should always feel responsive
-        animator.Update(0);
-        animator.Play(dir.x > 0f ? "kickRight" : "kickLeft", 0, 0f);
+        animator.CrossFade(
+            direction.x > 0f ? KickRightHash : KickLeftHash,
+            0.03f
+        );
     }
 
-    // Empty — kept so animation events on clips don't throw errors
-    public void OnKickImpact() { }
-
-    private IEnumerator KickInvincibility()
+    public void OnKickImpact()
     {
-        isInvincible = true;
-        yield return new WaitForSeconds(kickInvincibilityDuration);
-        isInvincible = false;
+        Vector3 kickOrigin =
+            transform.position - new Vector3(0f, kickHeightOffset, 0f);
+
+        int hitCount = Physics.OverlapSphereNonAlloc(
+            kickOrigin,
+            kickRange,
+            kickHits,
+            pipeLayer
+        );
+
+        if (hitCount <= 0 || pipe == null)
+            return;
+
+        bool validDirection =
+            (currentKickDirection.x > 0f && pipe.rotationDirection) ||
+            (currentKickDirection.x < 0f && !pipe.rotationDirection);
+
+        if (!validDirection)
+            return;
+
+        bool landed = pipe.GetKicked(currentKickDirection);
+
+        if (!landed)
+            return;
+
+        GameManager.instance.AddScore(1);
+
+        if (invincibilityRoutine != null)
+            StopCoroutine(invincibilityRoutine);
+
+        invincibilityRoutine = StartCoroutine(KickInvincibility());
     }
+
+    #endregion
+
+    #region Kick State
+
+    private IEnumerator KickStateRoutine()
+    {
+        IsKicking = true;
+
+        yield return new WaitForSeconds(kickDuration);
+
+        IsKicking = false;
+    }
+
+    #endregion
+
+    #region Combat / Damage
 
     public void TakeDamage(float amount)
     {
-        if (isInvincible) return;
+        if (IsInvincible)
+            return;
 
-        rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
+        Vector3 velocity = rb.linearVelocity;
+        velocity.x = 0f;
+        velocity.z = 0f;
+
+        rb.linearVelocity = velocity;
         rb.angularVelocity = Vector3.zero;
 
         health -= amount;
-        if (health <= 0)
+
+        if (health <= 0f)
+        {
             GameManager.instance.EndGame();
+        }
     }
+
+    private IEnumerator KickInvincibility()
+    {
+        IsInvincible = true;
+
+        yield return new WaitForSeconds(kickInvincibilityDuration);
+
+        IsInvincible = false;
+    }
+
+    #endregion
+
+    #region Ground Detection
 
     private void OnCollisionStay(Collision collision)
     {
-        if (collision.gameObject.CompareTag("Ground"))
-        {
-            if (!isGrounded)
-                animator.Play("Idle", 0, 0.1f);
+        if (!collision.gameObject.CompareTag("Ground"))
+            return;
 
-            isGrounded = true;
-            animator.SetBool("isGround", true);
+        if (!isGrounded)
+        {
+            animator.CrossFade(IdleHash, 0.05f);
         }
+
+        isGrounded = true;
+        animator.SetBool(IsGroundHash, true);
     }
 
     private void OnCollisionExit(Collision collision)
     {
-        if (collision.gameObject.CompareTag("Ground"))
-        {
-            isGrounded = false;
-            animator.SetBool("isGround", false);
-        }
+        if (!collision.gameObject.CompareTag("Ground"))
+            return;
+
+        isGrounded = false;
+        animator.SetBool(IsGroundHash, false);
     }
 
-    private void OnDestroy()
+    #endregion
+
+    #region Public API
+
+    public void SetPipeLogic(PipeLogic targetPipe)
     {
-        SwipeDetection.instance.swipePerformed -= OnSwipe;
+        pipe = targetPipe;
     }
+
+    public void SetKickState(bool value)
+    {
+        IsKicking = value;
+    }
+
+    #endregion
+
+    #region Gizmos
 
     private void OnDrawGizmosSelected()
     {
         Gizmos.color = Color.cyan;
+
         Vector3 origin = transform.position - new Vector3(0f, kickHeightOffset, 0f);
+
         Gizmos.DrawWireSphere(origin, kickRange);
     }
+
+    #endregion
 }

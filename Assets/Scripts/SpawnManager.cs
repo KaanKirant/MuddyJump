@@ -112,23 +112,39 @@ public class SpawnManager : MonoBehaviour
 
     private Transform GetFreeSpawnPoint()
     {
-        // Shuffle and return first point that isn't too close to an active enemy
-        Transform[] shuffled = ShuffledSpawnPoints();
-        foreach (Transform point in shuffled)
+        const float occupiedDistance = 1.5f;
+        float occupiedDistanceSqr = occupiedDistance * occupiedDistance;
+
+        int startIndex = Random.Range(0, spawnPoints.Length);
+
+        for (int i = 0; i < spawnPoints.Length; i++)
         {
+            Transform point = spawnPoints[(startIndex + i) % spawnPoints.Length];
+
             bool occupied = false;
-            foreach (GameObject e in activeEnemies)
+
+            for (int j = activeEnemies.Count - 1; j >= 0; j--)
             {
-                if (e != null && Vector3.Distance(e.transform.position, point.position) < 1.5f)
+                GameObject enemy = activeEnemies[j];
+
+                if (enemy == null)
+                {
+                    activeEnemies.RemoveAt(j);
+                    continue;
+                }
+
+                if ((enemy.transform.position - point.position).sqrMagnitude < occupiedDistanceSqr)
                 {
                     occupied = true;
                     break;
                 }
             }
-            if (!occupied) return point;
+
+            if (!occupied)
+                return point;
         }
-        // Fallback: just use a random point
-        return shuffled[0];
+
+        return spawnPoints[startIndex];
     }
 
     private void ClearActiveEnemies()

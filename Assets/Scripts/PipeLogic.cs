@@ -29,7 +29,7 @@ public class PipeLogic : MonoBehaviour
             if (player == null) return;
 
             // Skip entirely if player is in kick invincibility window
-            if (player.isInvincible) return;
+            if (player.IsInvincible) return;
 
             Animator anim = GetAnimator(collision.gameObject);
             if (anim != null)
