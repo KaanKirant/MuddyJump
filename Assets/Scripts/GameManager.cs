@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -23,13 +24,13 @@ public class GameManager : MonoBehaviour
     public float maxPipeSpeed = 120f;
 
     [Header("Camera")]
-    public CameraController cameraController;   // Drag the Main Camera here
+    public CameraController cameraController;
 
-    public bool isGameActive = true;
-    public int score = 0;
-    public int currentFloor = 0;
+    public bool isGameActive { get; private set; } = true;
+    public int score { get; private set; }
+    public int currentFloor { get; private set; }
 
-    private float currentFloorWorldY = 0f;      // Tracks the world Y of the current platform
+    private float _currentFloorWorldY;
 
     private void Awake()
     {
@@ -48,7 +49,7 @@ public class GameManager : MonoBehaviour
     public void NextFloor()
     {
         currentFloor++;
-        Debug.Log($"Floor {currentFloor} started.");
+        Debug.Log($"[GameManager] Floor {currentFloor} started.");
 
         ApplyDifficulty();
         StartCoroutine(RiseToNextFloor());
@@ -61,6 +62,7 @@ public class GameManager : MonoBehaviour
             basePipeSpeed,
             maxPipeSpeed
         );
+
         mainPipe.rotationSpeed = newSpeed;
 
         if (secondPipe != null && currentFloor >= secondPipeUnlockFloor)
@@ -70,7 +72,7 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    private System.Collections.IEnumerator RiseToNextFloor()
+    private IEnumerator RiseToNextFloor()
     {
         if (platformRoot == null)
         {
@@ -80,13 +82,11 @@ public class GameManager : MonoBehaviour
 
         Vector3 start = platformRoot.position;
         Vector3 target = start + Vector3.up * floorRiseHeight;
-        float elapsed = 0f;
         float duration = floorRiseHeight / riseSpeed;
+        float elapsed = 0f;
 
-        // Tell the camera where it's heading before the rise begins
-        currentFloorWorldY += floorRiseHeight;
-        if (cameraController != null)
-            cameraController.RiseToFloor(currentFloorWorldY);
+        _currentFloorWorldY += floorRiseHeight;
+        cameraController?.RiseToFloor(_currentFloorWorldY);
 
         while (elapsed < duration)
         {
@@ -103,21 +103,22 @@ public class GameManager : MonoBehaviour
     {
         if (!isGameActive) return;
         isGameActive = false;
-        gameOverUI.SetActive(true);
+
+        if (gameOverUI != null) gameOverUI.SetActive(true);
         Time.timeScale = 0f;
-        Debug.Log("GAME OVER!");
+        Debug.Log("[GameManager] Game Over.");
     }
 
     public void RestartGame()
     {
         Time.timeScale = 1f;
-        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
 
     public void AddScore(int amount)
     {
         if (!isGameActive) return;
         score += amount;
-        Debug.Log("Score: " + score);
+        Debug.Log($"[GameManager] Score: {score}");
     }
 }

@@ -16,7 +16,8 @@ public class SwipeDetection : MonoBehaviour
     [Header("Swipe Settings")]
     [SerializeField] private float swipeResistance = 100f;
 
-    private Vector2 initialPos;
+    private Vector2 _initialPos;
+    private bool _isPressed;
 
     private void Awake()
     {
@@ -25,7 +26,6 @@ public class SwipeDetection : MonoBehaviour
             Destroy(gameObject);
             return;
         }
-
         Instance = this;
     }
 
@@ -49,24 +49,22 @@ public class SwipeDetection : MonoBehaviour
 
     private void OnPressStarted(InputAction.CallbackContext _)
     {
-        initialPos = position.ReadValue<Vector2>();
+        _initialPos = position.ReadValue<Vector2>();
+        _isPressed = true;
     }
 
     private void OnPressReleased(InputAction.CallbackContext _)
     {
+        if (!_isPressed) return;
+        _isPressed = false;
         DetectSwipe();
     }
 
     private void DetectSwipe()
     {
-        Vector2 currentPos = position.ReadValue<Vector2>();
-        Vector2 delta = currentPos - initialPos;
+        Vector2 delta = position.ReadValue<Vector2>() - _initialPos;
+        if (delta.sqrMagnitude < swipeResistance * swipeResistance) return;
 
-        if (delta.magnitude < swipeResistance)
-            return;
-
-        Vector2 direction = delta.normalized;
-
-        SwipePerformed?.Invoke(direction);
+        SwipePerformed?.Invoke(delta.normalized);
     }
 }

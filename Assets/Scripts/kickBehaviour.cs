@@ -1,42 +1,22 @@
 using UnityEngine;
 
-// Tracks whether a kick animation is active on either the player or enemy.
-// Used for gameplay state, combo logic, UI, etc.
+// StateMachineBehaviour that tracks kick animation state on both player and enemy.
+// Attach to any kick animation clip state in the Animator.
 public class kickBehaviour : StateMachineBehaviour
 {
-    public override void OnStateEnter(
-        Animator animator,
-        AnimatorStateInfo stateInfo,
-        int layerIndex)
+    public override void OnStateEnter(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+        => SetKicking(animator, true);
+
+    public override void OnStateExit(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+        => SetKicking(animator, false);
+
+    private static void SetKicking(Animator animator, bool value)
     {
-        SetKicking(animator, true);
-    }
+        // Try player first, then enemy — avoids redundant GetComponent calls
+        PlayerMovement player = animator.GetComponentInParent<PlayerMovement>();
+        if (player != null) { player.SetKickState(value); return; }
 
-    public override void OnStateExit(
-        Animator animator,
-        AnimatorStateInfo stateInfo,
-        int layerIndex)
-    {
-        SetKicking(animator, false);
-    }
-
-    private void SetKicking(Animator animator, bool value)
-    {
-        PlayerMovement player =
-            animator.transform.GetComponentInParent<PlayerMovement>();
-
-        if (player != null)
-        {
-            player.SetKickState(value);
-            return;
-        }
-
-        EnemyAI enemy =
-            animator.transform.GetComponentInParent<EnemyAI>();
-
-        if (enemy != null)
-        {
-            enemy.isKicking = value;
-        }
+        EnemyAI enemy = animator.GetComponentInParent<EnemyAI>();
+        if (enemy != null) enemy.isKicking = value;
     }
 }

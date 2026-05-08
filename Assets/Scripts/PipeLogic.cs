@@ -1,17 +1,21 @@
-using UnityEngine;
 using System.Collections;
+using UnityEngine;
 
 public class PipeLogic : MonoBehaviour
 {
     public float rotationSpeed = 50f;
     public float rotationSpeedMultiplier = 1.25f;
-    public bool rotationDirection = true;
+    public bool rotationDirection = true;   // true = clockwise (+Y)
 
     [Header("Cooldowns")]
     public float kickCooldown = 0.5f;
 
-    private bool kickOnCooldown = false;
-    private bool hitOnCooldown = false;
+    [Header("Speed Clamp")]
+    [SerializeField] private float minSpeed = 25f;
+    [SerializeField] private float maxSpeed = 200f;
+
+    private bool _kickOnCooldown;
+    private bool _hitOnCooldown;
 
     private void Update()
     {
@@ -21,90 +25,72 @@ public class PipeLogic : MonoBehaviour
 
     private void OnCollisionEnter(Collision collision)
     {
-        if (hitOnCooldown) return;
+        if (_hitOnCooldown) return;
 
         if (collision.gameObject.CompareTag("Player"))
         {
             PlayerMovement player = collision.gameObject.GetComponentInParent<PlayerMovement>();
-            if (player == null) return;
+            if (player == null || player.IsInvincible) return;
 
-            // Skip entirely if player is in kick invincibility window
-            if (player.IsInvincible) return;
-
-            Animator anim = GetAnimator(collision.gameObject);
-            if (anim != null)
-                anim.Play(rotationDirection ? "HitReactionRight" : "HitReactionLeft", 1);
-
+            PlayHitReaction(collision.gameObject);
             player.TakeDamage(1);
             OnHitResolve();
         }
         else if (collision.gameObject.CompareTag("Enemy"))
         {
             EnemyAI enemy = collision.gameObject.GetComponentInParent<EnemyAI>();
-            if (enemy == null) return;
+            if (enemy == null || enemy.isInvincible) return;
 
-            // Skip entirely if enemy is in kick invincibility window
-            if (enemy.isInvincible) return;
-
-            Animator anim = GetAnimator(collision.gameObject);
-            if (anim != null)
-                anim.Play(rotationDirection ? "HitReactionRight" : "HitReactionLeft", 1);
-
+            PlayHitReaction(collision.gameObject);
             enemy.TakeDamage(1);
             OnHitResolve();
         }
     }
 
+    private void PlayHitReaction(GameObject go)
+    {
+        Animator anim = go.GetComponentInParent<Animator>()
+                     ?? go.GetComponentInChildren<Animator>();
+        if (anim != null)
+            anim.Play(rotationDirection ? "HitReactionRight" : "HitReactionLeft", 1);
+    }
+
     private void OnHitResolve()
     {
         rotationDirection = !rotationDirection;
-        rotationSpeed = Mathf.Clamp(rotationSpeed / rotationSpeedMultiplier, 25f, 200f);
+        rotationSpeed = Mathf.Clamp(rotationSpeed / rotationSpeedMultiplier, minSpeed, maxSpeed);
         StartCoroutine(HitCooldown());
     }
 
+    // Returns true if the kick connected (correct direction, not on cooldown)
     public bool GetKicked(Vector2 direction)
     {
-        if (kickOnCooldown) return false;
+        if (_kickOnCooldown) return false;
 
         bool kickingRight = direction.x > 0f && rotationDirection;
         bool kickingLeft = direction.x < 0f && !rotationDirection;
+        if (!kickingRight && !kickingLeft) return false;
 
-        if (kickingRight || kickingLeft)
-        {
-            rotationDirection = !rotationDirection;
-            rotationSpeed = Mathf.Clamp(rotationSpeed * rotationSpeedMultiplier, 25f, 200f);
-            StartCoroutine(KickCooldown());
-            return true;
-        }
-
-        return false;
+        rotationDirection = !rotationDirection;
+        rotationSpeed = Mathf.Clamp(rotationSpeed * rotationSpeedMultiplier, minSpeed, maxSpeed);
+        StartCoroutine(KickCooldown());
+        return true;
     }
 
-    // Helper to find Animator anywhere in the hierarchy of the collided object
-    private Animator GetAnimator(GameObject go)
-    {
-        Animator anim = go.GetComponentInParent<Animator>();
-        if (anim == null) anim = go.GetComponentInChildren<Animator>();
-        return anim;
-    }
+    public void Freeze(float duration) => StartCoroutine(FreezeCoroutine(duration));
 
     private IEnumerator KickCooldown()
     {
-        kickOnCooldown = true;
+        _kickOnCooldown = true;
         yield return new WaitForSeconds(kickCooldown);
-        kickOnCooldown = false;
+        _kickOnCooldown = false;
     }
 
     private IEnumerator HitCooldown()
     {
-        hitOnCooldown = true;
+        _hitOnCooldown = true;
         yield return new WaitForSeconds(kickCooldown);
-        hitOnCooldown = false;
-    }
-
-    public void Freeze(float duration)
-    {
-        StartCoroutine(FreezeCoroutine(duration));
+        _hitOnCooldown = false;
     }
 
     private IEnumerator FreezeCoroutine(float duration)

@@ -1,6 +1,6 @@
-using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
+using UnityEngine;
 
 public class SpawnManager : MonoBehaviour
 {
@@ -8,18 +8,22 @@ public class SpawnManager : MonoBehaviour
 
     [Header("Enemy Setup")]
     public GameObject standardEnemyPrefab;
-    public GameObject bossEnemyPrefab;      // Assign a prefab with EnemyAI isBoss = true
+    public GameObject bossEnemyPrefab;
     public Transform[] spawnPoints;
 
     [Header("Spawn Settings")]
-    public int maxEnemiesAlive = 3;         // Always keep this many enemies on the floor
-    public int killsToAdvanceFloor = 6;     // Total kills needed to trigger floor clear
-    public float respawnDelay = 1.2f;       // Delay before a replacement spawns after a kill
+    public int maxEnemiesAlive = 3;
+    public int killsToAdvanceFloor = 6;
+    public float respawnDelay = 1.2f;
 
-    private int currentFloor = 0;
-    private int killsThisFloor = 0;
-    private List<GameObject> activeEnemies = new List<GameObject>();
-    private bool floorClearing = false;     // Prevents new spawns during the transition
+    private int _currentFloor;
+    private int _killsThisFloor;
+    private bool _floorClearing;
+
+    private readonly List<GameObject> _activeEnemies = new List<GameObject>();
+
+    // Occupied-radius check uses sqrMagnitude — avoids sqrt per frame
+    private const float OccupiedDistanceSqr = 1.5f * 1.5f;
 
     private void Awake()
     {
@@ -27,46 +31,43 @@ public class SpawnManager : MonoBehaviour
         else Destroy(gameObject);
     }
 
-    // Called by GameManager on each new floor
+    // Called by GameManager when a new floor begins
     public void StartFloor(int floor)
     {
-        currentFloor = floor;
-        killsThisFloor = 0;
-        floorClearing = false;
+        _currentFloor = floor;
+        _killsThisFloor = 0;
+        _floorClearing = false;
+
         ClearActiveEnemies();
 
-        // Fill all slots immediately at floor start
         for (int i = 0; i < maxEnemiesAlive; i++)
             SpawnEnemy();
     }
 
-    // Called by EnemyAI.TakeDamage when health hits 0
+    // Called by EnemyAI when health hits 0
     public void OnEnemyDied(GameObject enemy)
     {
-        activeEnemies.Remove(enemy);
+        _activeEnemies.Remove(enemy);
         Destroy(enemy);
-        killsThisFloor++;
+        _killsThisFloor++;
 
-        if (killsThisFloor >= killsToAdvance())
+        if (_killsThisFloor >= KillsToAdvance())
         {
-            if (!floorClearing)
-            {
-                floorClearing = true;
-                ClearActiveEnemies();
-                GameManager.instance.NextFloor();
-            }
+            if (_floorClearing) return;
+            _floorClearing = true;
+            ClearActiveEnemies();
+            GameManager.instance.NextFloor();
             return;
         }
 
-        // Floor not done — fill the empty slot after a short delay
-        if (!floorClearing)
+        if (!_floorClearing)
             StartCoroutine(RespawnAfterDelay());
     }
 
     private IEnumerator RespawnAfterDelay()
     {
         yield return new WaitForSeconds(respawnDelay);
-        if (!floorClearing)
+        if (!_floorClearing)
             SpawnEnemy();
     }
 
@@ -74,16 +75,15 @@ public class SpawnManager : MonoBehaviour
     {
         if (spawnPoints.Length == 0)
         {
-            Debug.LogWarning("SpawnManager: No spawn points assigned.");
+            Debug.LogWarning("[SpawnManager] No spawn points assigned.");
             return;
         }
 
-        // Pick a spawn point that doesn't already have an enemy on it
         Transform point = GetFreeSpawnPoint();
         if (point == null) return;
 
-        bool isBossFloor = currentFloor % 10 == 0 && currentFloor > 0;
-        GameObject prefab = (isBossFloor && bossEnemyPrefab != null)
+        bool isBossFloor = _currentFloor % 10 == 0 && _currentFloor > 0;
+        GameObject prefab = isBossFloor && bossEnemyPrefab != null
             ? bossEnemyPrefab
             : standardEnemyPrefab;
 
@@ -92,76 +92,47 @@ public class SpawnManager : MonoBehaviour
 
         if (ai != null)
         {
-            // Scale health with floor — boss gets extra
-            ai.health = isBossFloor
-                ? 6 + currentFloor / 2
-                : 3 + currentFloor / 3;
-
-            ai.currentFloor = currentFloor;
+            ai.health = isBossFloor ? 6 + _currentFloor / 2 : 3 + _currentFloor / 3;
+            ai.currentFloor = _currentFloor;
             ai.isBoss = isBossFloor;
         }
 
-        activeEnemies.Add(enemy);
+        _activeEnemies.Add(enemy);
     }
 
-    // Kills required scales with floor so early floors feel easy
-    private int killsToAdvance()
-    {
-        return killsToAdvanceFloor + currentFloor;
-    }
+    private int KillsToAdvance() => killsToAdvanceFloor + _currentFloor;
 
     private Transform GetFreeSpawnPoint()
     {
-        const float occupiedDistance = 1.5f;
-        float occupiedDistanceSqr = occupiedDistance * occupiedDistance;
-
         int startIndex = Random.Range(0, spawnPoints.Length);
 
         for (int i = 0; i < spawnPoints.Length; i++)
         {
             Transform point = spawnPoints[(startIndex + i) % spawnPoints.Length];
-
             bool occupied = false;
 
-            for (int j = activeEnemies.Count - 1; j >= 0; j--)
+            // Iterate backwards so we can safely prune null entries in-place
+            for (int j = _activeEnemies.Count - 1; j >= 0; j--)
             {
-                GameObject enemy = activeEnemies[j];
-
-                if (enemy == null)
-                {
-                    activeEnemies.RemoveAt(j);
-                    continue;
-                }
-
-                if ((enemy.transform.position - point.position).sqrMagnitude < occupiedDistanceSqr)
+                if (_activeEnemies[j] == null) { _activeEnemies.RemoveAt(j); continue; }
+                if ((_activeEnemies[j].transform.position - point.position).sqrMagnitude < OccupiedDistanceSqr)
                 {
                     occupied = true;
                     break;
                 }
             }
 
-            if (!occupied)
-                return point;
+            if (!occupied) return point;
         }
 
+        // All points occupied — fall back to the random start point
         return spawnPoints[startIndex];
     }
 
     private void ClearActiveEnemies()
     {
-        foreach (GameObject enemy in activeEnemies)
+        foreach (GameObject enemy in _activeEnemies)
             if (enemy != null) Destroy(enemy);
-        activeEnemies.Clear();
-    }
-
-    private Transform[] ShuffledSpawnPoints()
-    {
-        Transform[] copy = (Transform[])spawnPoints.Clone();
-        for (int i = copy.Length - 1; i > 0; i--)
-        {
-            int j = Random.Range(0, i + 1);
-            (copy[i], copy[j]) = (copy[j], copy[i]);
-        }
-        return copy;
+        _activeEnemies.Clear();
     }
 }

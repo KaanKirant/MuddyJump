@@ -1,5 +1,5 @@
-using UnityEngine;
 using System.Collections;
+using UnityEngine;
 
 public class EnemyAI : MonoBehaviour
 {
@@ -9,94 +9,93 @@ public class EnemyAI : MonoBehaviour
     public int health = 3;
     public bool isKicking = false;
     public bool isInvincible = false;
-    public float jumpForce = 18.0f;
+
+    [Header("Jump")]
+    public float jumpForce = 18f;
 
     [Header("Kick Settings")]
     public float kickRange = 1.2f;
     public LayerMask pipeLayer;
-    public Transform kickPoint;            // Assign a child GameObject at the enemy's foot
+    public Transform kickPoint;
 
     [Header("Invincibility")]
     public float kickInvincibilityDuration = 0.5f;
 
-    private float kickSpeedBonus => isBoss ? 1.5f : 1f;
+    // Boss gets a one-time speed multiplier bump per kick
+    private float KickSpeedBonus => isBoss ? 1.5f : 1f;
 
-    private PipeLogic pipe;
-    private Animator animator;
-    private Rigidbody rb;
+    private PipeLogic _pipe;
+    private Animator _animator;
+    private Rigidbody _rb;
 
     [SerializeField] private bool isGrounded;
 
+    // Cached animator hashes
+    private static readonly int IsGroundHash = Animator.StringToHash("isGround");
+
     private void Awake()
     {
-        pipe = FindAnyObjectByType<PipeLogic>();
-        animator = GetComponent<Animator>();
-        rb = GetComponent<Rigidbody>();
+        _pipe = FindAnyObjectByType<PipeLogic>();
+        _animator = GetComponent<Animator>();
+        _rb = GetComponent<Rigidbody>();
     }
 
     public void DecideAction()
     {
+        // hesitateChance decreases with floor; kickChance increases — enemy becomes more aggressive
         float hesitateChance = Mathf.Clamp(0.3f - currentFloor * 0.015f, 0f, 0.3f);
         float kickChance = Mathf.Clamp(0.4f + currentFloor * 0.01f, 0f, 0.75f);
-
         float roll = Random.value;
 
         if (roll < kickChance)
             TryKick();
         else if (roll < 1f - hesitateChance)
-            Jump();
+            DoJump();
+        // else: hesitate / do nothing
     }
 
-    private void Jump()
+    private void DoJump()
     {
-        rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
-        animator.Update(0);
-        animator.Play("Jump", 0, 0f);
+        _rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
+        _animator.Play("Jump", 0, 0f);
     }
 
     private void TryKick()
     {
-        if (pipe == null) return;
+        if (_pipe == null) return;
 
-        // Check range immediately — no waiting for an animation frame
-        Vector3 kickOrigin = kickPoint != null ? kickPoint.position : transform.position;
-        Collider[] hits = Physics.OverlapSphere(kickOrigin, kickRange, pipeLayer);
-        if (hits.Length == 0)
+        Vector3 origin = kickPoint != null ? kickPoint.position : transform.position;
+        bool pipeInRange = Physics.CheckSphere(origin, kickRange, pipeLayer);
+
+        if (!pipeInRange)
         {
-            // Pipe not in range — play the miss animation and do nothing
-            bool pipeGoingRight = pipe.rotationDirection;
-            animator.Update(0);
-            animator.Play(pipeGoingRight ? "kickRight" : "kickLeft", 0, 0f);
+            // Miss animation — play kick in current pipe direction for visual consistency
+            _animator.Play(_pipe.rotationDirection ? "kickRight" : "kickLeft", 0, 0f);
             return;
         }
 
-        // Pipe is in range — read live direction and kick immediately
-        Vector2 liveDirection = pipe.rotationDirection ? Vector2.right : Vector2.left;
+        Vector2 liveDirection = _pipe.rotationDirection ? Vector2.right : Vector2.left;
         bool landed;
 
         if (isBoss)
         {
-            float original = pipe.rotationSpeedMultiplier;
-            pipe.rotationSpeedMultiplier *= kickSpeedBonus;
-            landed = pipe.GetKicked(liveDirection);
-            pipe.rotationSpeedMultiplier = original;
+            float original = _pipe.rotationSpeedMultiplier;
+            _pipe.rotationSpeedMultiplier = original * KickSpeedBonus;
+            landed = _pipe.GetKicked(liveDirection);
+            _pipe.rotationSpeedMultiplier = original;
         }
         else
         {
-            landed = pipe.GetKicked(liveDirection);
+            landed = _pipe.GetKicked(liveDirection);
         }
 
-        // Play animation for visual feedback regardless of result
-        animator.Update(0);
-        animator.Play(liveDirection == Vector2.right ? "kickRight" : "kickLeft", 0, 0f);
+        _animator.Play(liveDirection == Vector2.right ? "kickRight" : "kickLeft", 0, 0f);
 
-        // Only grant invincibility if kick actually landed
         if (landed)
             StartCoroutine(KickInvincibility());
     }
 
-    // OnKickImpact is kept but does nothing — animation event can stay
-    // on the clips without causing issues
+    // Kept for animation event compatibility — intentionally empty
     public void OnKickImpact() { }
 
     public void TakeDamage(int amount)
@@ -116,29 +115,23 @@ public class EnemyAI : MonoBehaviour
 
     private void OnCollisionStay(Collision collision)
     {
-        if (collision.gameObject.CompareTag("Ground"))
-        {
-            if (!isGrounded)
-                animator.Play("Idle", 0, 0.1f);
+        if (!collision.gameObject.CompareTag("Ground")) return;
+        if (!isGrounded) _animator.Play("Idle", 0, 0.1f);
 
-            isGrounded = true;
-            animator.SetBool("isGround", true);
-        }
+        isGrounded = true;
+        _animator.SetBool(IsGroundHash, true);
     }
 
     private void OnCollisionExit(Collision collision)
     {
-        if (collision.gameObject.CompareTag("Ground"))
-        {
-            isGrounded = false;
-            animator.SetBool("isGround", false);
-        }
+        if (!collision.gameObject.CompareTag("Ground")) return;
+        isGrounded = false;
+        _animator.SetBool(IsGroundHash, false);
     }
 
     private void OnDrawGizmosSelected()
     {
         Gizmos.color = isBoss ? Color.yellow : Color.red;
-        Vector3 origin = kickPoint != null ? kickPoint.position : transform.position;
-        Gizmos.DrawWireSphere(origin, kickRange);
+        Gizmos.DrawWireSphere(kickPoint != null ? kickPoint.position : transform.position, kickRange);
     }
 }

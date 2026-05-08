@@ -6,7 +6,7 @@ using UnityEngine;
 public class PlayerMovement : MonoBehaviour
 {
     [Header("Player Stats")]
-    [SerializeField] private float health = 3f;
+    [SerializeField] private int health = 3;
     [SerializeField] private float actionCooldown = 0.2f;
 
     [Header("Physics Settings")]
@@ -29,23 +29,21 @@ public class PlayerMovement : MonoBehaviour
     public bool IsKicking { get; private set; }
     public bool IsInvincible { get; private set; }
 
-    private Rigidbody rb;
-    private Animator animator;
-    private PipeLogic pipe;
+    private Rigidbody _rb;
+    private Animator _animator;
+    private PipeLogic _pipe;
 
-    private Vector2 currentKickDirection;
+    private Vector2 _currentKickDirection;
+    private float _lastJumpTime;
+    private float _lastKickTime;
 
-    private float lastJumpTime;
-    private float lastKickTime;
+    private Coroutine _invincibilityRoutine;
+    private Coroutine _kickRoutine;
 
-    private Coroutine invincibilityRoutine;
-    private Coroutine kickRoutine;
+    private readonly Collider[] _kickHits = new Collider[4];
 
-    private readonly Collider[] kickHits = new Collider[4];
-
-    // Animator hashes
+    // Animator hashes — computed once
     private static readonly int IsGroundHash = Animator.StringToHash("isGround");
-
     private static readonly int JumpHash = Animator.StringToHash("Jump");
     private static readonly int RollHash = Animator.StringToHash("Roll");
     private static readonly int KickRightHash = Animator.StringToHash("kickRight");
@@ -56,14 +54,14 @@ public class PlayerMovement : MonoBehaviour
 
     private void Awake()
     {
-        rb = GetComponent<Rigidbody>();
-        animator = GetComponent<Animator>();
+        _rb = GetComponent<Rigidbody>();
+        _animator = GetComponent<Animator>();
 
-        rb.constraints = RigidbodyConstraints.FreezeRotation
-                       | RigidbodyConstraints.FreezePositionX
-                       | RigidbodyConstraints.FreezePositionZ;
+        _rb.constraints = RigidbodyConstraints.FreezeRotation
+                        | RigidbodyConstraints.FreezePositionX
+                        | RigidbodyConstraints.FreezePositionZ;
 
-        pipe = FindAnyObjectByType<PipeLogic>();
+        _pipe = FindAnyObjectByType<PipeLogic>();
     }
 
     private void OnEnable()
@@ -80,10 +78,9 @@ public class PlayerMovement : MonoBehaviour
 
     private void FixedUpdate()
     {
+        // Extra gravity only while airborne — avoids fighting physics on ground
         if (!isGrounded)
-        {
-            rb.AddForce(Vector3.down * fallGravity, ForceMode.Acceleration);
-        }
+            _rb.AddForce(Vector3.down * fallGravity, ForceMode.Acceleration);
     }
 
     #endregion
@@ -92,22 +89,9 @@ public class PlayerMovement : MonoBehaviour
 
     private void OnSwipe(Vector2 direction)
     {
-        if (direction.y > 0.5f)
-        {
-            TryJump();
-            return;
-        }
-
-        if (direction.y < -0.5f)
-        {
-            TryFastFall();
-            return;
-        }
-
-        if (Mathf.Abs(direction.x) > 0.5f)
-        {
-            TryKick(direction);
-        }
+        if (direction.y > 0.5f) { TryJump(); return; }
+        if (direction.y < -0.5f) { TryFastFall(); return; }
+        if (Mathf.Abs(direction.x) > 0.5f) TryKick(direction);
     }
 
     #endregion
@@ -116,156 +100,108 @@ public class PlayerMovement : MonoBehaviour
 
     private void TryJump()
     {
-        if (!isGrounded)
-            return;
-
-        if (Time.time < lastJumpTime + actionCooldown)
-            return;
-
-        Jump();
+        if (!isGrounded || Time.time < _lastJumpTime + actionCooldown) return;
+        DoJump();
     }
 
-    private void Jump()
+    private void DoJump()
     {
-        lastJumpTime = Time.time;
+        _lastJumpTime = Time.time;
 
-        Vector3 velocity = rb.linearVelocity;
-        velocity.y = 0f;
-        rb.linearVelocity = velocity;
-
-        rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
-
-        animator.CrossFade(JumpHash, 0.05f);
+        // Zero out vertical velocity for consistent jump height
+        Vector3 v = _rb.linearVelocity; v.y = 0f; _rb.linearVelocity = v;
+        _rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
+        _animator.CrossFade(JumpHash, 0.05f);
     }
 
     private void TryFastFall()
     {
-        if (isGrounded)
-            return;
-
-        FastFall();
+        if (isGrounded) return;
+        DoFastFall();
     }
 
-    private void FastFall()
+    private void DoFastFall()
     {
-        Vector3 velocity = rb.linearVelocity;
-        velocity.y = 0f;
-        rb.linearVelocity = velocity;
+        // Zero vertical and angular velocity so slam is deterministic
+        Vector3 v = _rb.linearVelocity; v.y = 0f; _rb.linearVelocity = v;
+        _rb.angularVelocity = Vector3.zero;
 
-        rb.angularVelocity = Vector3.zero;
-
-        rb.AddForce(Vector3.down * slamForce, ForceMode.Impulse);
-
-        animator.CrossFade(RollHash, 0.05f);
+        _rb.AddForce(Vector3.down * slamForce, ForceMode.Impulse);
+        _animator.CrossFade(RollHash, 0.05f);
     }
 
     private void TryKick(Vector2 direction)
     {
-        if (!isGrounded)
-            return;
-
-        if (Time.time < lastKickTime + actionCooldown)
-            return;
-
-        Kick(direction);
+        if (!isGrounded || Time.time < _lastKickTime + actionCooldown) return;
+        DoKick(direction);
     }
 
-    private void Kick(Vector2 direction)
+    private void DoKick(Vector2 direction)
     {
-        lastKickTime = Time.time;
+        _lastKickTime = Time.time;
+        _currentKickDirection = direction;
 
-        currentKickDirection = direction;
+        if (_kickRoutine != null) StopCoroutine(_kickRoutine);
+        _kickRoutine = StartCoroutine(KickStateRoutine());
 
-        if (kickRoutine != null)
-            StopCoroutine(kickRoutine);
-
-        kickRoutine = StartCoroutine(KickStateRoutine());
-
-        animator.CrossFade(
-            direction.x > 0f ? KickRightHash : KickLeftHash,
-            0.03f
-        );
+        _animator.CrossFade(direction.x > 0f ? KickRightHash : KickLeftHash, 0.03f);
     }
 
+    // Called from animation event
     public void OnKickImpact()
     {
-        Vector3 kickOrigin =
-            transform.position - new Vector3(0f, kickHeightOffset, 0f);
+        if (_pipe == null) return;
 
-        int hitCount = Physics.OverlapSphereNonAlloc(
-            kickOrigin,
-            kickRange,
-            kickHits,
-            pipeLayer
-        );
+        Vector3 kickOrigin = transform.position - new Vector3(0f, kickHeightOffset, 0f);
+        int hitCount = Physics.OverlapSphereNonAlloc(kickOrigin, kickRange, _kickHits, pipeLayer);
+        if (hitCount == 0) return;
 
-        if (hitCount <= 0 || pipe == null)
-            return;
+        bool validDirection = (_currentKickDirection.x > 0f && _pipe.rotationDirection) ||
+                              (_currentKickDirection.x < 0f && !_pipe.rotationDirection);
+        if (!validDirection) return;
 
-        bool validDirection =
-            (currentKickDirection.x > 0f && pipe.rotationDirection) ||
-            (currentKickDirection.x < 0f && !pipe.rotationDirection);
-
-        if (!validDirection)
-            return;
-
-        bool landed = pipe.GetKicked(currentKickDirection);
-
-        if (!landed)
-            return;
+        bool landed = _pipe.GetKicked(_currentKickDirection);
+        if (!landed) return;
 
         GameManager.instance.AddScore(1);
 
-        if (invincibilityRoutine != null)
-            StopCoroutine(invincibilityRoutine);
-
-        invincibilityRoutine = StartCoroutine(KickInvincibility());
+        if (_invincibilityRoutine != null) StopCoroutine(_invincibilityRoutine);
+        _invincibilityRoutine = StartCoroutine(KickInvincibility());
     }
 
     #endregion
 
-    #region Kick State
+    #region Coroutines
 
     private IEnumerator KickStateRoutine()
     {
         IsKicking = true;
-
         yield return new WaitForSeconds(kickDuration);
-
         IsKicking = false;
-    }
-
-    #endregion
-
-    #region Combat / Damage
-
-    public void TakeDamage(float amount)
-    {
-        if (IsInvincible)
-            return;
-
-        Vector3 velocity = rb.linearVelocity;
-        velocity.x = 0f;
-        velocity.z = 0f;
-
-        rb.linearVelocity = velocity;
-        rb.angularVelocity = Vector3.zero;
-
-        health -= amount;
-
-        if (health <= 0f)
-        {
-            GameManager.instance.EndGame();
-        }
     }
 
     private IEnumerator KickInvincibility()
     {
         IsInvincible = true;
-
         yield return new WaitForSeconds(kickInvincibilityDuration);
-
         IsInvincible = false;
+    }
+
+    #endregion
+
+    #region Combat
+
+    public void TakeDamage(int amount)
+    {
+        if (IsInvincible) return;
+
+        // Kill horizontal drift on hit
+        Vector3 v = _rb.linearVelocity; v.x = 0f; v.z = 0f; _rb.linearVelocity = v;
+        _rb.angularVelocity = Vector3.zero;
+
+        health -= amount;
+        if (health <= 0)
+            GameManager.instance.EndGame();
     }
 
     #endregion
@@ -274,40 +210,26 @@ public class PlayerMovement : MonoBehaviour
 
     private void OnCollisionStay(Collision collision)
     {
-        if (!collision.gameObject.CompareTag("Ground"))
-            return;
-
-        if (!isGrounded)
-        {
-            animator.CrossFade(IdleHash, 0.05f);
-        }
+        if (!collision.gameObject.CompareTag("Ground")) return;
+        if (!isGrounded) _animator.CrossFade(IdleHash, 0.05f);
 
         isGrounded = true;
-        animator.SetBool(IsGroundHash, true);
+        _animator.SetBool(IsGroundHash, true);
     }
 
     private void OnCollisionExit(Collision collision)
     {
-        if (!collision.gameObject.CompareTag("Ground"))
-            return;
-
+        if (!collision.gameObject.CompareTag("Ground")) return;
         isGrounded = false;
-        animator.SetBool(IsGroundHash, false);
+        _animator.SetBool(IsGroundHash, false);
     }
 
     #endregion
 
     #region Public API
 
-    public void SetPipeLogic(PipeLogic targetPipe)
-    {
-        pipe = targetPipe;
-    }
-
-    public void SetKickState(bool value)
-    {
-        IsKicking = value;
-    }
+    public void SetPipeLogic(PipeLogic targetPipe) => _pipe = targetPipe;
+    public void SetKickState(bool value) => IsKicking = value;
 
     #endregion
 
@@ -316,10 +238,7 @@ public class PlayerMovement : MonoBehaviour
     private void OnDrawGizmosSelected()
     {
         Gizmos.color = Color.cyan;
-
-        Vector3 origin = transform.position - new Vector3(0f, kickHeightOffset, 0f);
-
-        Gizmos.DrawWireSphere(origin, kickRange);
+        Gizmos.DrawWireSphere(transform.position - new Vector3(0f, kickHeightOffset, 0f), kickRange);
     }
 
     #endregion
