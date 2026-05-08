@@ -1,143 +1,338 @@
 using System.Collections;
 using UnityEngine;
 
+[RequireComponent(typeof(Rigidbody))]
+[RequireComponent(typeof(Animator))]
 public class EnemyAI : MonoBehaviour
 {
     [HideInInspector] public int currentFloor = 0;
     [HideInInspector] public bool isBoss = false;
 
-    public int health = 3;
-    public bool isKicking = false;
-    public bool isInvincible = false;
+    [Header("Health")]
+    public int currentHealth = 3;
+    public int maxHealth = 3;
+
+    [HideInInspector] public bool isKicking = false;
+    [HideInInspector] public bool isInvincible = false;
 
     [Header("Jump")]
-    public float jumpForce = 18f;
+    [SerializeField] private float jumpForce = 18f;
 
     [Header("Kick Settings")]
-    public float kickRange = 1.2f;
-    public LayerMask pipeLayer;
-    public Transform kickPoint;
+    [SerializeField] private float kickRange = 1.2f;
+    [SerializeField] private LayerMask pipeLayer;
+    [SerializeField] private Transform kickPoint;
 
     [Header("Invincibility")]
-    public float kickInvincibilityDuration = 0.5f;
+    [SerializeField] private float kickInvincibilityDuration = 0.5f;
+
+    [Header("UI")]
+    [SerializeField] private EnemyHealthUI healthUIPrefab;
+
+    private EnemyHealthUI spawnedHealthUI;
 
     private float KickSpeedBonus => isBoss ? 1.5f : 1f;
 
-    private PipeLogic _pipe;
-    private Animator _animator;
-    private Rigidbody _rb;
+    private PipeLogic pipe;
+    private Animator animator;
+    private Rigidbody rb;
 
-    // Direction decided at kick-start, consumed at OnKickImpact
-    private Vector2 _pendingKickDirection;
+    private Coroutine invincibilityRoutine;
+
+    private Vector2 pendingKickDirection;
 
     [SerializeField] private bool isGrounded;
 
-    private static readonly int IsGroundHash = Animator.StringToHash("isGround");
+    private bool isDead;
+
+    // Animator hashes
+    private static readonly int IsGroundHash =
+        Animator.StringToHash("isGround");
+
+    private static readonly int JumpHash =
+        Animator.StringToHash("Jump");
+
+    private static readonly int IdleHash =
+        Animator.StringToHash("Idle");
+
+    private static readonly int KickRightHash =
+        Animator.StringToHash("kickRight");
+
+    private static readonly int KickLeftHash =
+        Animator.StringToHash("kickLeft");
 
     private void Awake()
     {
-        _pipe = FindAnyObjectByType<PipeLogic>();
-        _animator = GetComponent<Animator>();
-        _rb = GetComponent<Rigidbody>();
+        pipe = FindAnyObjectByType<PipeLogic>();
+
+        animator = GetComponent<Animator>();
+        rb = GetComponent<Rigidbody>();
+
+        SpawnHealthUI();
     }
+
+    private void OnDestroy()
+    {
+        if (spawnedHealthUI != null)
+        {
+            Destroy(spawnedHealthUI.gameObject);
+        }
+    }
+
+    #region UI
+
+    private void SpawnHealthUI()
+    {
+        if (healthUIPrefab == null)
+            return;
+
+        spawnedHealthUI = Instantiate(healthUIPrefab);
+
+        spawnedHealthUI.Initialize(
+            transform,
+            maxHealth
+        );
+    }
+
+    #endregion
+
+    #region AI
 
     public void DecideAction()
     {
-        float difficulty = GameManager.instance != null ? GameManager.instance.DifficultyNormalized : 0f;
-        float hesitateChance = Mathf.Clamp(0.3f - difficulty * 0.3f, 0f, 0.3f);
-        float kickChance = Mathf.Clamp(0.4f + difficulty * 0.35f, 0f, 0.75f);
+        if (isDead)
+            return;
+
+        float difficulty =
+            GameManager.instance != null
+                ? GameManager.instance.DifficultyNormalized
+                : 0f;
+
+        float hesitateChance =
+            Mathf.Clamp(
+                0.3f - difficulty * 0.3f,
+                0f,
+                0.3f
+            );
+
+        float kickChance =
+            Mathf.Clamp(
+                0.4f + difficulty * 0.35f,
+                0f,
+                0.75f
+            );
+
         float roll = Random.value;
 
         if (roll < kickChance)
+        {
             TryKick();
+        }
         else if (roll < 1f - hesitateChance)
+        {
             DoJump();
-        // else: hesitate
+        }
     }
+
+    #endregion
+
+    #region Movement
 
     private void DoJump()
     {
-        _rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
-        _animator.Play("Jump", 0, 0f);
+        if (!isGrounded)
+            return;
+
+        Vector3 velocity = rb.linearVelocity;
+        velocity.y = 0f;
+
+        rb.linearVelocity = velocity;
+
+        rb.AddForce(
+            Vector3.up * jumpForce,
+            ForceMode.Impulse
+        );
+
+        animator.CrossFade(JumpHash, 0.05f);
     }
 
-    // ── Step 1: decide direction, play animation — pipe NOT touched yet ───────
+    #endregion
+
+    #region Kick
+
     private void TryKick()
     {
-        if (_pipe == null) return;
+        if (pipe == null)
+            return;
 
-        // Snapshot the pipe direction NOW so the animation visually matches intent.
-        // Pipe interaction is deferred to OnKickImpact so the effect lands at the
-        // same frame the foot visually strikes — identical to the player flow.
-        _pendingKickDirection = _pipe.rotationDirection ? Vector2.right : Vector2.left;
-        _animator.Play(_pendingKickDirection == Vector2.right ? "kickRight" : "kickLeft", 0, 0f);
+        pendingKickDirection =
+            pipe.rotationDirection
+                ? Vector2.right
+                : Vector2.left;
+
+        animator.CrossFade(
+            pendingKickDirection == Vector2.right
+                ? KickRightHash
+                : KickLeftHash,
+            0.03f
+        );
     }
 
-    public void OnKickWindowOpen() => OnKickImpact();
+    public void OnKickWindowOpen()
+    {
+        OnKickImpact();
+    }
 
-    public void OnKickWindowClose() => OnKickImpact();
+    public void OnKickWindowClose()
+    {
+        OnKickImpact();
+    }
 
-    // ── Step 2: animation event fires at foot-strike frame ────────────────────
     public void OnKickImpact()
     {
-        if (_pipe == null) return;
+        if (isDead)
+            return;
 
-        // Range check at impact frame — enemy must actually be close enough
-        Vector3 origin = kickPoint != null ? kickPoint.position : transform.position;
-        bool pipeInRange = Physics.CheckSphere(origin, kickRange, pipeLayer);
-        if (!pipeInRange) return;
+        if (pipe == null)
+            return;
+
+        Vector3 origin =
+            kickPoint != null
+                ? kickPoint.position
+                : transform.position;
+
+        bool pipeInRange =
+            Physics.CheckSphere(
+                origin,
+                kickRange,
+                pipeLayer
+            );
+
+        if (!pipeInRange)
+            return;
 
         bool landed;
 
         if (isBoss)
         {
-            float original = _pipe.rotationSpeedMultiplier;
-            _pipe.rotationSpeedMultiplier = original * KickSpeedBonus;
-            landed = _pipe.GetKicked(_pendingKickDirection);
-            _pipe.rotationSpeedMultiplier = original;
+            float original =
+                pipe.rotationSpeedMultiplier;
+
+            pipe.rotationSpeedMultiplier =
+                original * KickSpeedBonus;
+
+            landed =
+                pipe.GetKicked(pendingKickDirection);
+
+            pipe.rotationSpeedMultiplier = original;
         }
         else
         {
-            landed = _pipe.GetKicked(_pendingKickDirection);
+            landed =
+                pipe.GetKicked(pendingKickDirection);
         }
 
-        if (landed)
+        if (!landed)
+            return;
+
+        if (invincibilityRoutine != null)
+        {
+            StopCoroutine(invincibilityRoutine);
+        }
+
+        invincibilityRoutine =
             StartCoroutine(KickInvincibility());
     }
 
+    #endregion
+
+    #region Health
+
     public void TakeDamage(int amount)
     {
-        if (isInvincible) return;
-        health -= amount;
-        if (health <= 0)
-            SpawnManager.instance.OnEnemyDied(gameObject);
+        if (isDead)
+            return;
+
+        if (isInvincible)
+            return;
+
+        currentHealth -= amount;
+
+        spawnedHealthUI?.UpdateHealth(currentHealth);
+
+        if (currentHealth > 0)
+            return;
+
+        Die();
+    }
+
+    private void Die()
+    {
+        isDead = true;
+
+        SpawnManager.instance.OnEnemyDied(gameObject);
+
+        Destroy(gameObject);
     }
 
     private IEnumerator KickInvincibility()
     {
         isInvincible = true;
-        yield return new WaitForSeconds(kickInvincibilityDuration);
+
+        yield return new WaitForSeconds(
+            kickInvincibilityDuration
+        );
+
         isInvincible = false;
     }
 
+    #endregion
+
+    #region Ground Detection
+
     private void OnCollisionStay(Collision collision)
     {
-        if (!collision.gameObject.CompareTag("Ground")) return;
-        if (!isGrounded) _animator.Play("Idle", 0, 0.1f);
+        if (!collision.gameObject.CompareTag("Ground"))
+            return;
+
+        if (!isGrounded)
+        {
+            animator.CrossFade(IdleHash, 0.05f);
+        }
+
         isGrounded = true;
-        _animator.SetBool(IsGroundHash, true);
+
+        animator.SetBool(IsGroundHash, true);
     }
 
     private void OnCollisionExit(Collision collision)
     {
-        if (!collision.gameObject.CompareTag("Ground")) return;
+        if (!collision.gameObject.CompareTag("Ground"))
+            return;
+
         isGrounded = false;
-        _animator.SetBool(IsGroundHash, false);
+
+        animator.SetBool(IsGroundHash, false);
     }
+
+    #endregion
+
+    #region Gizmos
 
     private void OnDrawGizmosSelected()
     {
-        Gizmos.color = isBoss ? Color.yellow : Color.red;
-        Gizmos.DrawWireSphere(kickPoint != null ? kickPoint.position : transform.position, kickRange);
+        Gizmos.color =
+            isBoss
+                ? Color.yellow
+                : Color.red;
+
+        Gizmos.DrawWireSphere(
+            kickPoint != null
+                ? kickPoint.position
+                : transform.position,
+            kickRange
+        );
     }
+
+    #endregion
 }

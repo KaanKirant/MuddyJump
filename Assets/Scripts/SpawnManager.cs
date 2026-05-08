@@ -113,7 +113,7 @@ public class SpawnManager : MonoBehaviour
         {
             // Scale health with difficulty
             float d = GameManager.instance.DifficultyNormalized;
-            ai.health = baseEnemyHealth + Mathf.RoundToInt(healthScaleBonus * d);
+            ai.currentHealth = baseEnemyHealth + Mathf.RoundToInt(healthScaleBonus * d);
             ai.isBoss = false;
         }
 

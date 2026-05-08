@@ -176,7 +176,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::EnemyAI
   currentFloor: 0
   isBoss: 0
-  health: 3
+  currentHealth: 3
+  maxHealth: 3
   isKicking: 0
   isInvincible: 0
   jumpForce: 16
@@ -186,6 +187,7 @@ MonoBehaviour:
     m_Bits: 8
   kickPoint: {fileID: 9137019580381477824}
   kickInvincibilityDuration: 0.4
+  healthUIPrefab: {fileID: -6658544198436406485, guid: 3683d1890a89fef41a3dac95e8d88535, type: 3}
   isGrounded: 0
 --- !u!95 &3606532536660931688
 Animator:
