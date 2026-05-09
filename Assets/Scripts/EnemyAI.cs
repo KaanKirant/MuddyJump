@@ -1,5 +1,6 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.UI;
 
 /// <summary>
 /// Controls a single enemy's decision-making, movement, kick logic, and health.
@@ -16,14 +17,29 @@ using UnityEngine;
 [RequireComponent(typeof(Animator))]
 public class EnemyAI : MonoBehaviour
 {
+    public delegate void OnHealthChangedDelegate();
+    public OnHealthChangedDelegate onHealthChangedCallback;
     // ─── Identity ─────────────────────────────────────────────────────────────
     // Set by SpawnManager after instantiation
     [HideInInspector] public bool isBoss = false;
 
     // ─── Health ───────────────────────────────────────────────────────────────
     [Header("Health")]
-    public int currentHealth = 3;
-    public int maxHealth = 3;
+    [SerializeField]
+    private float health;
+    [SerializeField]
+    private float maxHealth;
+    [SerializeField]
+    private float maxTotalHealth;
+    public float Health { get { return health; } set { health = value; } }
+    public float MaxHealth { get { return maxHealth; } set { maxHealth = value; } }
+    public float MaxTotalHealth { get { return maxTotalHealth; } }
+
+    private GameObject[] heartContainers;
+    private Image[] heartFills;
+
+    public Transform heartsParent;
+    public GameObject heartContainerPrefab;
 
     // ─── State (read by PipeLogic for invincibility checks) ───────────────────
     [HideInInspector] public bool isKicking = false;
@@ -80,7 +96,15 @@ public class EnemyAI : MonoBehaviour
         _animator = GetComponent<Animator>();
         _rb = GetComponent<Rigidbody>();
 
-        SpawnHealthUI();
+        // Should I use lists? Maybe :)
+        heartContainers = new GameObject[(int)PlayerStats.Instance.MaxTotalHealth];
+        heartFills = new Image[(int)PlayerStats.Instance.MaxTotalHealth];
+
+        onHealthChangedCallback += UpdateHeartsHUD;
+        InstantiateHeartContainers();
+        UpdateHeartsHUD();
+
+        //SpawnHealthUI();
     }
 
     private void OnDestroy()
@@ -94,12 +118,13 @@ public class EnemyAI : MonoBehaviour
 
     #region UI
 
+    /*
     private void SpawnHealthUI()
     {
         if (healthUIPrefab == null) return;
         _spawnedHealthUI = Instantiate(healthUIPrefab);
         _spawnedHealthUI.Initialize(transform, maxHealth);
-    }
+    }*/
 
     #endregion
 
@@ -228,11 +253,79 @@ public class EnemyAI : MonoBehaviour
     {
         if (_isDead || isInvincible) return;
 
-        currentHealth -= amount;
-        _spawnedHealthUI?.UpdateHealth(currentHealth);
+        health -= amount;
+        ClampHealth();
 
-        if (currentHealth > 0) return;
-        Die();
+        if (health < 1)
+        {
+            Die();
+        }
+    }
+
+    public void Heal(float health)
+    {
+        this.health += health;
+        ClampHealth();
+    }
+
+    void ClampHealth()
+    {
+        health = Mathf.Clamp(health, 0, maxHealth);
+
+        if (onHealthChangedCallback != null)
+            onHealthChangedCallback.Invoke();
+    }
+
+    public void UpdateHeartsHUD()
+    {
+        SetHeartContainers();
+        SetFilledHearts();
+    }
+
+    void SetHeartContainers()
+    {
+        for (int i = 0; i < heartContainers.Length; i++)
+        {
+            if (i < maxHealth)
+            {
+                heartContainers[i].SetActive(true);
+            }
+            else
+            {
+                heartContainers[i].SetActive(false);
+            }
+        }
+    }
+    void SetFilledHearts()
+    {
+        for (int i = 0; i < heartFills.Length; i++)
+        {
+            if (i < health)
+            {
+                heartFills[i].fillAmount = 1;
+            }
+            else
+            {
+                heartFills[i].fillAmount = 0;
+            }
+        }
+
+        if (health % 1 != 0)
+        {
+            int lastPos = Mathf.FloorToInt(health);
+            heartFills[lastPos].fillAmount = health % 1;
+        }
+    }
+
+    void InstantiateHeartContainers()
+    {
+        for (int i = 0; i < maxTotalHealth; i++)
+        {
+            GameObject temp = Instantiate(heartContainerPrefab);
+            temp.transform.SetParent(heartsParent, false);
+            heartContainers[i] = temp;
+            heartFills[i] = temp.transform.Find("HeartFill").GetComponent<Image>();
+        }
     }
 
     private void Die()

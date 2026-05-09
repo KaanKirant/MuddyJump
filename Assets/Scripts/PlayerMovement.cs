@@ -36,12 +36,9 @@ public class PlayerMovement : MonoBehaviour
     [SerializeField] private bool _kickWindowOpen;  // Visible in Inspector for tuning
 
     // ─── Public State ─────────────────────────────────────────────────────────
-    public int CurrentLives { get; private set; }
     public bool IsKicking { get; private set; }
     public bool IsInvincible { get; private set; }
 
-    // UI subscribes: int = current lives, float = regen progress 0→1
-    public event Action<int, float> OnLivesChanged;
 
     // ─── Private ──────────────────────────────────────────────────────────────
     private Rigidbody _rb;
@@ -79,7 +76,6 @@ public class PlayerMovement : MonoBehaviour
                         | RigidbodyConstraints.FreezePositionZ;
 
         _pipe = FindAnyObjectByType<PipeLogic>();
-        CurrentLives = maxLives;
     }
 
     private void OnEnable()
@@ -251,46 +247,38 @@ public class PlayerMovement : MonoBehaviour
 
     #region Lives & Damage
 
-    public void TakeDamage(int amount)
+public void TakeDamage(int amount)
+{
+    if (IsInvincible) return;
+
+    PlayerStats.Instance.TakeDamage(amount);
+
+    if (PlayerStats.Instance.Health < 1)
     {
-        if (IsInvincible) return;
-
-        Vector3 v = _rb.linearVelocity; v.x = 0f; v.z = 0f; _rb.linearVelocity = v;
-        _rb.angularVelocity = Vector3.zero;
-
-        CurrentLives -= amount;
-        NotifyLivesChanged();
-
-        if (CurrentLives <= 0)
-        {
-            CurrentLives = 0;
-            GameManager.instance.EndGame();
-            return;
-        }
-
-        if (_invincibilityRoutine != null) StopCoroutine(_invincibilityRoutine);
-        _invincibilityRoutine = StartCoroutine(HitInvincibility());
-
-        RestartRegenLoop();
+        GameManager.instance.EndGame();
     }
+    else
+    {
+        StartCoroutine(HitInvincibility());
+    }
+
+    RestartRegenLoop();
+}
 
     private IEnumerator LivesRegenLoop()
     {
         while (true)
         {
-            if (CurrentLives >= maxLives)
-                yield return new WaitUntil(() => CurrentLives < maxLives);
+            if (PlayerStats.Instance.Health >= maxLives)
+                yield return new WaitUntil(() => PlayerStats.Instance.Health < maxLives);
 
-            float elapsed = 0f;
-            while (elapsed < lifeRegenInterval)
+            float targetHealth = Mathf.Min(Mathf.Floor(PlayerStats.Instance.Health) + 1f, PlayerStats.Instance.MaxHealth);
+            while (PlayerStats.Instance.Health < targetHealth)
             {
-                elapsed += Time.deltaTime;
-                OnLivesChanged?.Invoke(CurrentLives, elapsed / lifeRegenInterval);
+                //elapsed += Time.deltaTime;
+                PlayerStats.Instance.Heal(Time.deltaTime / lifeRegenInterval);
                 yield return null;
             }
-
-            CurrentLives = Mathf.Min(CurrentLives + 1, maxLives);
-            NotifyLivesChanged();
         }
     }
 
@@ -299,8 +287,6 @@ public class PlayerMovement : MonoBehaviour
         if (_regenRoutine != null) StopCoroutine(_regenRoutine);
         _regenRoutine = StartCoroutine(LivesRegenLoop());
     }
-
-    private void NotifyLivesChanged() => OnLivesChanged?.Invoke(CurrentLives, 0f);
 
     #endregion
 

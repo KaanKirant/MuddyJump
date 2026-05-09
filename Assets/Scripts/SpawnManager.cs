@@ -131,8 +131,8 @@ public class SpawnManager : MonoBehaviour
         if (ai != null)
         {
             float d = GameManager.instance.DifficultyNormalized;
-            ai.currentHealth = baseEnemyHealth + Mathf.RoundToInt(healthScaleBonus * d);
-            ai.maxHealth = ai.currentHealth;   // Keep maxHealth in sync for health bar
+            ai.Health = baseEnemyHealth + Mathf.RoundToInt(healthScaleBonus * d);
+            ai.MaxHealth = ai.Health;   // Keep maxHealth in sync for health bar
             ai.isBoss = false;
         }
 
