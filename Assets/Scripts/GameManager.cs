@@ -1,17 +1,26 @@
 ﻿using UnityEngine;
 using UnityEngine.SceneManagement;
 
+/// <summary>
+/// Central game loop driver. Owns platform rise speed, difficulty ramp,
+/// pipe speed scaling, score tracking, and game-over flow.
+///
+/// Single source of truth: DifficultyNormalized (0→1) — all other systems
+/// read this instead of maintaining their own difficulty counters.
+/// </summary>
 public class GameManager : MonoBehaviour
 {
     public static GameManager instance;
 
     // ─── Platform ─────────────────────────────────────────────────────────────
     [Header("Platform")]
+    [Tooltip("Root transform of the arena. Moved upward every frame.")]
     public Transform platformRoot;
 
     [Header("Platform Speed")]
-    public float baseRiseSpeed = 2f;
-    public float maxRiseSpeed = 12f;
+    public float baseRiseSpeed = 2f;    // Starting units/sec
+    public float maxRiseSpeed = 12f;   // Hard cap
+    [Tooltip("Speed units added per second. Controls how quickly difficulty ramps.")]
     public float speedRampRate = 0.05f;
 
     // ─── Pipe Difficulty ──────────────────────────────────────────────────────
@@ -21,53 +30,47 @@ public class GameManager : MonoBehaviour
 
     public float basePipeSpeed = 50f;
     public float maxPipeSpeed = 120f;
-
-    [Tooltip("How strongly pipe speed tracks difficulty. 1 = full scale.")]
+    [Tooltip("1 = pipe fully tracks platform difficulty. Lower values make pipe easier than the platform.")]
     public float pipeSpeedDifficultyScale = 1f;
 
     [Header("Second Pipe")]
-    [Tooltip("World units traveled before second pipe activates.")]
+    [Tooltip("Distance in world units before the second pipe activates.")]
     public float secondPipeUnlockDistance = 100f;
-
-    public float secondPipeSpeedRatio = 0.75f;
+    public float secondPipeSpeedRatio = 0.75f;   // Second pipe is always a bit slower
 
     // ─── Camera ───────────────────────────────────────────────────────────────
     [Header("Camera")]
     public CameraController cameraController;
 
-    // ─── Public State ─────────────────────────────────────────────────────────
+    // ─── Public Read-Only State ───────────────────────────────────────────────
     public float DistanceTraveled { get; private set; }
-
     public int BonusScore { get; private set; }
 
-    public int TotalScore =>
-        Mathf.FloorToInt(DistanceTraveled) + BonusScore;
+    /// <summary>Total displayed score: distance (floored) + bonus from kills/kicks.</summary>
+    public int TotalScore => Mathf.FloorToInt(DistanceTraveled) + BonusScore;
 
     public float CurrentRiseSpeed { get; private set; }
-
     public bool IsGameActive { get; private set; } = true;
 
-    // Normalised 0→1 difficulty — single source of truth
+    /// <summary>
+    /// Normalised difficulty 0→1. Read by SpawnManager, EnemyAI, PipeLogic scaling.
+    /// 0 = game start speed, 1 = max speed reached.
+    /// </summary>
     public float DifficultyNormalized =>
         Mathf.InverseLerp(baseRiseSpeed, maxRiseSpeed, CurrentRiseSpeed);
 
-    // ─── Save Keys ────────────────────────────────────────────────────────────
+    // ─── Private ──────────────────────────────────────────────────────────────
     private const string BestScoreKey = "BEST_SCORE";
-
     private bool _secondPipeUnlocked;
 
     // ─────────────────────────────────────────────────────────────────────────
 
+    #region Unity Lifecycle
+
     private void Awake()
     {
-        if (instance == null)
-        {
-            instance = this;
-        }
-        else
-        {
-            Destroy(gameObject);
-        }
+        if (instance == null) instance = this;
+        else Destroy(gameObject);
     }
 
     private void Start()
@@ -79,22 +82,23 @@ public class GameManager : MonoBehaviour
 
         SpawnManager.instance.StartSpawning();
 
+        // Initial HUD draw
         UpdateHUD();
     }
 
     private void Update()
     {
-        if (!IsGameActive)
-            return;
+        if (!IsGameActive) return;
 
         RisePlatform();
         RampDifficulty();
         CheckSecondPipe();
-
         UpdateHUD();
     }
 
-    // ─── Platform ─────────────────────────────────────────────────────────────
+    #endregion
+
+    #region Platform
 
     private void RisePlatform()
     {
@@ -105,100 +109,88 @@ public class GameManager : MonoBehaviour
 
         DistanceTraveled += delta;
 
-        if (cameraController != null)
-        {
-            cameraController.RiseToFloor(
-                platformRoot != null
-                    ? platformRoot.position.y
-                    : DistanceTraveled
-            );
-        }
+        // Feed live platform Y to camera every frame — no lerp needed here,
+        // CameraController's SmoothDamp handles the smoothing
+        cameraController?.RiseToFloor(
+            platformRoot != null ? platformRoot.position.y : DistanceTraveled
+        );
     }
 
-    // ─── Difficulty ───────────────────────────────────────────────────────────
+    #endregion
+
+    #region Difficulty
 
     private void RampDifficulty()
     {
+        // Linear ramp — simple and predictable for a hypercasual game
         CurrentRiseSpeed = Mathf.Min(
             CurrentRiseSpeed + speedRampRate * Time.deltaTime,
             maxRiseSpeed
         );
 
+        // Pipe speed is driven by the same 0→1 normalised value
+        // so it always stays proportional to platform speed
         float t = DifficultyNormalized * pipeSpeedDifficultyScale;
+        float pipeSpeed = Mathf.Lerp(basePipeSpeed, maxPipeSpeed, t);
 
-        float pipeSpeed =
-            Mathf.Lerp(basePipeSpeed, maxPipeSpeed, t);
-
-        if (mainPipe != null)
-            mainPipe.rotationSpeed = pipeSpeed;
+        if (mainPipe != null) mainPipe.rotationSpeed = pipeSpeed;
 
         if (_secondPipeUnlocked && secondPipe != null)
-            secondPipe.rotationSpeed =
-                pipeSpeed * secondPipeSpeedRatio;
+            secondPipe.rotationSpeed = pipeSpeed * secondPipeSpeedRatio;
     }
 
     private void CheckSecondPipe()
     {
-        if (_secondPipeUnlocked || secondPipe == null)
-            return;
-
-        if (DistanceTraveled < secondPipeUnlockDistance)
-            return;
+        if (_secondPipeUnlocked || secondPipe == null) return;
+        if (DistanceTraveled < secondPipeUnlockDistance) return;
 
         _secondPipeUnlocked = true;
-
         secondPipe.gameObject.SetActive(true);
-
         Debug.Log("[GameManager] Second pipe unlocked.");
     }
 
-    // ─── Score ────────────────────────────────────────────────────────────────
+    #endregion
 
+    #region Score
+
+    /// <summary>
+    /// Called for discrete score events: successful kicks (+1), enemy kills (+5).
+    /// Distance is added automatically every frame in RisePlatform.
+    /// </summary>
     public void AddBonusScore(int amount)
     {
-        if (!IsGameActive)
-            return;
-
+        if (!IsGameActive) return;
         BonusScore += amount;
-
         UpdateHUD();
     }
 
     private void UpdateHUD()
     {
-        if (UIManager.Instance == null)
-            return;
-
+        if (UIManager.Instance == null) return;
         UIManager.Instance.UpdateScore(TotalScore);
-
-        int bestScore = PlayerPrefs.GetInt(BestScoreKey, 0);
-
-        UIManager.Instance.UpdateBestScore(bestScore);
+        UIManager.Instance.UpdateBestScore(PlayerPrefs.GetInt(BestScoreKey, 0));
     }
 
-    // ─── Game Over ────────────────────────────────────────────────────────────
+    #endregion
+
+    #region Game Over
 
     public void EndGame()
     {
-        if (!IsGameActive)
-            return;
-
+        if (!IsGameActive) return;
         IsGameActive = false;
 
         SpawnManager.instance.StopSpawning();
 
-        // Stop pipes
-        if (mainPipe != null)
-            mainPipe.enabled = false;
-
-        if (secondPipe != null)
-            secondPipe.enabled = false;
+        // Freeze pipes in place
+        if (mainPipe != null) mainPipe.enabled = false;
+        if (secondPipe != null) secondPipe.enabled = false;
 
         SaveBestScore();
 
-        if (UIManager.Instance != null)
-            UIManager.Instance.ShowGameOver();
+        UIManager.Instance?.ShowGameOver();
 
+        // Freeze time after UI is shown so the UI itself still animates in
         Time.timeScale = 0f;
 
         Debug.Log($"[GameManager] Game Over. Score: {TotalScore}");
@@ -206,31 +198,28 @@ public class GameManager : MonoBehaviour
 
     private void SaveBestScore()
     {
-        int currentBest =
-            PlayerPrefs.GetInt(BestScoreKey, 0);
-
-        if (TotalScore <= currentBest)
-            return;
+        int best = PlayerPrefs.GetInt(BestScoreKey, 0);
+        if (TotalScore <= best) return;
 
         PlayerPrefs.SetInt(BestScoreKey, TotalScore);
         PlayerPrefs.Save();
     }
 
-    // ─── Scene Flow ───────────────────────────────────────────────────────────
+    #endregion
+
+    #region Scene Flow
 
     public void RestartGame()
     {
         Time.timeScale = 1f;
-
-        SceneManager.LoadScene(
-            SceneManager.GetActiveScene().buildIndex
-        );
+        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
 
     public void LoadMainMenu()
     {
         Time.timeScale = 1f;
-
         SceneManager.LoadScene("MainMenuScene");
     }
+
+    #endregion
 }

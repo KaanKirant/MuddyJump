@@ -1,17 +1,25 @@
 using System.Collections;
 using UnityEngine;
 
+/// <summary>
+/// Trigger volume that detects incoming pipe sweeps and tells EnemyAI to react.
+/// Attach this as a child of the enemy prefab with a trigger Collider sized to
+/// the enemy's "danger zone" — roughly the radius the pipe sweeps through.
+///
+/// Reaction time scales inversely with pipe speed so the AI stays appropriately
+/// challenging at high difficulty without becoming impossible at low speed.
+/// </summary>
 public class EnemyTriggerArea : MonoBehaviour
 {
     [Range(0.05f, 0.4f)]
-    [Tooltip("Base reaction time at minimum pipe speed. Scales down as pipe accelerates.")]
+    [Tooltip("Reaction time at minimum pipe speed. Automatically shrinks as pipe speeds up.")]
     public float baseReactionTime = 0.15f;
 
     private EnemyAI _parentLogic;
 
     private void Awake()
     {
-        // Use Awake instead of Start so it's ready before any trigger fires
+        // Awake instead of Start — trigger can fire on the first frame the enemy is alive
         _parentLogic = GetComponentInParent<EnemyAI>();
     }
 
@@ -19,20 +27,22 @@ public class EnemyTriggerArea : MonoBehaviour
     {
         if (!other.CompareTag("Pipe")) return;
 
+        // Walk up to the PipeLogic root — the pipe collider may be a child mesh
         PipeLogic pipe = other.GetComponentInParent<PipeLogic>();
-        if (pipe != null && _parentLogic != null)
-            StartCoroutine(WaitToReact(pipe));
+        if (pipe == null || _parentLogic == null) return;
+
+        StartCoroutine(WaitToReact(pipe));
     }
 
     private IEnumerator WaitToReact(PipeLogic pipe)
     {
-        // Clamp speed so division is safe; scale reaction time inversely with speed
+        // Clamp speed floor to 1 so we never divide by zero
         float speed = Mathf.Max(pipe.rotationSpeed, 1f);
         float reactionTime = Mathf.Clamp(baseReactionTime * (50f / speed), 0.05f, baseReactionTime);
 
         yield return new WaitForSeconds(reactionTime);
 
-        // Guard: parent may have been destroyed during the wait
+        // Enemy may have been destroyed during the reaction window
         if (_parentLogic != null)
             _parentLogic.DecideAction();
     }
