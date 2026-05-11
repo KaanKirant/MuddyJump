@@ -1,6 +1,7 @@
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
+using static UnityEngine.GraphicsBuffer;
 
 /// <summary>
 /// Controls a single enemy's decision-making, movement, kick logic, and health.
@@ -74,6 +75,7 @@ public class EnemyAI : MonoBehaviour
     private PipeLogic _pipe;
     private Animator _animator;
     private Rigidbody _rb;
+    private Camera _mainCamera;
 
     private EnemyHealthUI _spawnedHealthUI;
     private Vector2 _pendingKickDirection;  // Snapshotted at kick start, used at impact
@@ -95,6 +97,7 @@ public class EnemyAI : MonoBehaviour
         _pipe = FindAnyObjectByType<PipeLogic>();
         _animator = GetComponent<Animator>();
         _rb = GetComponent<Rigidbody>();
+        _mainCamera = Camera.main;
 
         // Should I use lists? Maybe :)
         heartContainers = new GameObject[(int)PlayerStats.Instance.MaxTotalHealth];
@@ -105,6 +108,20 @@ public class EnemyAI : MonoBehaviour
         UpdateHeartsHUD();
 
         //SpawnHealthUI();
+    }
+    private void LateUpdate()
+    {
+        // Billboard toward camera
+        if (_mainCamera != null)
+        {
+            heartsParent.LookAt(heartsParent.transform.position + _mainCamera.transform.rotation * Vector3.forward, _mainCamera.transform.rotation * Vector3.up);
+            
+            /*heartsParent.rotation =
+                Quaternion.LookRotation(
+                    heartsParent.position -
+                    _mainCamera.transform.position
+                );*/
+        }
     }
 
     private void OnDestroy()
