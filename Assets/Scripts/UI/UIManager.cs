@@ -4,15 +4,14 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// Central UI controller. Owns all panels and routes data from game systems to UI components.
+/// Central UI controller. Routes score data and game-over state from GameManager to UI.
+///
+/// Health display is handled directly by HUDController (subscribes to PlayerStats).
+/// UIManager no longer needs to sit in the middle of that flow.
 ///
 /// Connections:
-///   GameManager  → UpdateScore(), UpdateBestScore(), ShowGameOver()
-///   PlayerMovement.OnLivesChanged → OnLivesChanged() → HUDController.UpdateHearts()
-///
-/// Game over panel uses a CanvasGroup for fade-in with unscaled time
-/// (Time.timeScale = 0 at game over so WaitForSecondsRealtime is required).
-/// Buttons are wired in code — no UnityEvent setup needed in Inspector.
+///   GameManager → UpdateScore(), UpdateBestScore(), ShowGameOver()
+///   Buttons     → wired in Awake via onClick.AddListener
 /// </summary>
 public class UIManager : MonoBehaviour
 {
@@ -27,13 +26,13 @@ public class UIManager : MonoBehaviour
     [SerializeField] private GameObject gameOverPanel;
     [SerializeField] private TextMeshProUGUI gameOverScoreText;
     [SerializeField] private TextMeshProUGUI gameOverBestScoreText;
-    [Tooltip("'NEW BEST!' label — activated only when this run beats the saved best.")]
+    [Tooltip("Shown only when this run beats the saved best score.")]
     [SerializeField] private GameObject newBestLabel;
     [SerializeField] private Button restartButton;
     [SerializeField] private Button mainMenuButton;
 
     [Header("Game Over Animation")]
-    [Tooltip("Seconds for the game over panel to fade in (unscaled time).")]
+    [Tooltip("Fade-in duration in unscaled seconds (timeScale = 0 at game over).")]
     [SerializeField] private float gameOverFadeInDuration = 0.4f;
 
     // ─── Pause ────────────────────────────────────────────────────────────────
@@ -44,8 +43,8 @@ public class UIManager : MonoBehaviour
     private CanvasGroup _gameOverCanvasGroup;
     private bool _isPaused;
 
-    // Cache best score at start so ShowGameOver can compare correctly
-    // even after GameManager has already saved the new best
+    // Cached before the session starts so ShowGameOver can detect a new best
+    // even after GameManager.SaveBestScore() has already written to PlayerPrefs
     private int _bestScoreAtSessionStart;
 
     private const string BestScoreKey = "BEST_SCORE";
@@ -59,14 +58,12 @@ public class UIManager : MonoBehaviour
 
         SetupGameOverPanel();
 
-        // Wire buttons in code — avoids Inspector UnityEvent fragility on scene reload
         restartButton?.onClick.AddListener(OnRestartClicked);
         mainMenuButton?.onClick.AddListener(OnMainMenuClicked);
     }
 
     private void Start()
     {
-        // Cache best score before this session can overwrite it
         _bestScoreAtSessionStart = PlayerPrefs.GetInt(BestScoreKey, 0);
     }
 
@@ -84,7 +81,7 @@ public class UIManager : MonoBehaviour
     {
         if (gameOverPanel == null) return;
 
-        // Auto-add CanvasGroup if missing so we don't require manual Inspector setup
+        // Auto-add CanvasGroup so fade works without manual Inspector setup
         _gameOverCanvasGroup = gameOverPanel.GetComponent<CanvasGroup>()
                             ?? gameOverPanel.AddComponent<CanvasGroup>();
 
@@ -93,36 +90,23 @@ public class UIManager : MonoBehaviour
         _gameOverCanvasGroup.blocksRaycasts = false;
         gameOverPanel.SetActive(false);
 
-        if (newBestLabel != null)
-            newBestLabel.SetActive(false);
+        if (newBestLabel != null) newBestLabel.SetActive(false);
     }
 
     #endregion
 
     #region HUD
 
-    /// <summary>Called by GameManager every frame and on bonus score events.</summary>
     public void UpdateScore(int score) => hud?.UpdateScore(score);
-
-    /// <summary>Called by GameManager every frame with the current PlayerPrefs best.</summary>
     public void UpdateBestScore(int score) => hud?.UpdateBestScore(score);
-
-    /// <summary>
-    /// Routed from PlayerMovement.OnLivesChanged.
-    /// lives = current life count, regenProgress = 0→1 fill (0 on instant changes).
-    /// </summary>
-    private void OnLivesChanged(int lives, float regenProgress)
-    {
-        hud?.UpdateHearts(lives, regenProgress);
-    }
 
     #endregion
 
     #region Game Over
 
     /// <summary>
-    /// Called by GameManager.EndGame(). Populates and fades in the game over panel.
-    /// Time.timeScale is already 0 — all timing uses unscaled time.
+    /// Called by GameManager.EndGame(). Populates panel then fades it in.
+    /// Time.timeScale is already 0 — timing uses unscaled delta.
     /// </summary>
     public void ShowGameOver()
     {
@@ -134,7 +118,6 @@ public class UIManager : MonoBehaviour
         if (gameOverScoreText != null) gameOverScoreText.text = finalScore.ToString();
         if (gameOverBestScoreText != null) gameOverBestScoreText.text = bestScore.ToString();
 
-        // Compare against pre-session best — GameManager.SaveBestScore() already ran
         if (newBestLabel != null)
             newBestLabel.SetActive(finalScore > _bestScoreAtSessionStart);
 
@@ -158,7 +141,6 @@ public class UIManager : MonoBehaviour
             yield return null;
         }
 
-        // Fully visible and interactive
         _gameOverCanvasGroup.alpha = 1f;
         _gameOverCanvasGroup.interactable = true;
         _gameOverCanvasGroup.blocksRaycasts = true;

@@ -18,7 +18,7 @@ public class SpawnManager : MonoBehaviour
 
     // ─── Enemy Setup ──────────────────────────────────────────────────────────
     [Header("Enemy Setup")]
-    public GameObject standardEnemyPrefab;
+    public GameObject[] enemyPrefabs;
     public Transform[] spawnPoints;
 
     // ─── Spawn Settings ───────────────────────────────────────────────────────
@@ -116,23 +116,26 @@ public class SpawnManager : MonoBehaviour
 
     private void SpawnEnemy()
     {
-        if (spawnPoints.Length == 0)
+        if (spawnPoints.Length == 0 || enemyPrefabs.Length == 0)
         {
-            Debug.LogWarning("[SpawnManager] No spawn points assigned.");
+            Debug.LogWarning("[SpawnManager] Missing spawn points or enemy prefabs.");
             return;
         }
 
         Transform point = GetFreeSpawnPoint();
         if (point == null) return;
 
-        GameObject enemy = Instantiate(standardEnemyPrefab, point.position, point.rotation);
+        // --- WHAT CHANGED --- Pick a random enemy from the array
+        GameObject selectedPrefab = enemyPrefabs[Random.Range(0, enemyPrefabs.Length)];
+        GameObject enemy = Instantiate(selectedPrefab, point.position, point.rotation);
+
         EnemyAI ai = enemy.GetComponent<EnemyAI>();
 
         if (ai != null)
         {
             float d = GameManager.instance.DifficultyNormalized;
             ai.Health = baseEnemyHealth + Mathf.RoundToInt(healthScaleBonus * d);
-            ai.MaxHealth = ai.Health;   // Keep maxHealth in sync for health bar
+            ai.MaxHealth = ai.Health;
             ai.isBoss = false;
         }
 

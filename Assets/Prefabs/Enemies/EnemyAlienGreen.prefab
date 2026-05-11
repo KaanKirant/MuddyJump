@@ -133,7 +133,7 @@ Transform:
   - {fileID: 9137019580381477824}
   - {fileID: 8539788570269660414}
   - {fileID: 8623188551998904938}
-  - {fileID: 5353121357805134455}
+  - {fileID: 6580748837081077095}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!54 &4577571110796998530
@@ -179,7 +179,7 @@ MonoBehaviour:
   health: 3
   maxHealth: 3
   maxTotalHealth: 3
-  heartsParent: {fileID: 7356855013822724201}
+  heartsParent: {fileID: 8575226528557961081}
   heartContainerPrefab: {fileID: 1000013667988280, guid: 677e3f20f0ab76a45bd59d5b73b0b446, type: 3}
   isKicking: 0
   isInvincible: 0
@@ -191,7 +191,6 @@ MonoBehaviour:
   kickPoint: {fileID: 9137019580381477824}
   kickImpactDelay: 0.15
   kickInvincibilityDuration: 0.4
-  healthUIPrefab: {fileID: -6658544198436406485, guid: 3683d1890a89fef41a3dac95e8d88535, type: 3}
   isGrounded: 0
 --- !u!95 &3606532536660931688
 Animator:
@@ -215,7 +214,7 @@ Animator:
   m_AllowConstantClipSamplingOptimization: 1
   m_KeepAnimatorStateOnDisable: 0
   m_WriteDefaultValuesOnDisable: 0
---- !u!1001 &7445451856572531800
+--- !u!1001 &8523643610879963976
 PrefabInstance:
   m_ObjectHideFlags: 0
   serializedVersion: 2
@@ -223,6 +222,18 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 1210707955445608959}
     m_Modifications:
+    - target: {fileID: 93242624071384113, guid: 3683d1890a89fef41a3dac95e8d88535, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 93242624071384113, guid: 3683d1890a89fef41a3dac95e8d88535, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 93242624071384113, guid: 3683d1890a89fef41a3dac95e8d88535, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 2
+      objectReference: {fileID: 0}
     - target: {fileID: 1257403435338355676, guid: 3683d1890a89fef41a3dac95e8d88535, type: 3}
       propertyPath: m_PresetInfoIsWorld
       value: 1
@@ -297,7 +308,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3249791914820462127, guid: 3683d1890a89fef41a3dac95e8d88535, type: 3}
       propertyPath: m_AnchoredPosition.y
-      value: 3.35
+      value: 2.74
       objectReference: {fileID: 0}
     - target: {fileID: 3249791914820462127, guid: 3683d1890a89fef41a3dac95e8d88535, type: 3}
       propertyPath: m_LocalEulerAnglesHint.x
@@ -316,15 +327,15 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 3683d1890a89fef41a3dac95e8d88535, type: 3}
---- !u!224 &5353121357805134455 stripped
+--- !u!224 &6580748837081077095 stripped
 RectTransform:
   m_CorrespondingSourceObject: {fileID: 3249791914820462127, guid: 3683d1890a89fef41a3dac95e8d88535, type: 3}
-  m_PrefabInstance: {fileID: 7445451856572531800}
+  m_PrefabInstance: {fileID: 8523643610879963976}
   m_PrefabAsset: {fileID: 0}
---- !u!224 &7356855013822724201 stripped
+--- !u!224 &8575226528557961081 stripped
 RectTransform:
   m_CorrespondingSourceObject: {fileID: 93242624071384113, guid: 3683d1890a89fef41a3dac95e8d88535, type: 3}
-  m_PrefabInstance: {fileID: 7445451856572531800}
+  m_PrefabInstance: {fileID: 8523643610879963976}
   m_PrefabAsset: {fileID: 0}
 --- !u!1001 &8997783364223208436
 PrefabInstance:

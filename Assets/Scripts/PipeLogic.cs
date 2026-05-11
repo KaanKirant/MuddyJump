@@ -52,6 +52,10 @@ public class PipeLogic : MonoBehaviour
 
             PlayHitReaction(collision.gameObject);
             player.TakeDamage(1);
+
+            // --- WHAT CHANGED --- Trigger hit stop for game feel
+            if (GameManager.instance != null) GameManager.instance.TriggerHitStop();
+
             ResolveHit();
         }
         else if (collision.gameObject.CompareTag("Enemy"))
@@ -61,6 +65,10 @@ public class PipeLogic : MonoBehaviour
 
             PlayHitReaction(collision.gameObject);
             enemy.TakeDamage(1);
+
+            // --- WHAT CHANGED --- Trigger hit stop for game feel
+            if (GameManager.instance != null) GameManager.instance.TriggerHitStop();
+
             ResolveHit();
         }
     }

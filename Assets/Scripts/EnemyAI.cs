@@ -1,50 +1,52 @@
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
-using static UnityEngine.GraphicsBuffer;
 
 /// <summary>
 /// Controls a single enemy's decision-making, movement, kick logic, and health.
 ///
 /// Decision flow (triggered by EnemyTriggerArea when pipe enters range):
 ///   DecideAction() → rolls kick/jump/hesitate based on DifficultyNormalized
-///   TryKick() → plays animation, starts KickSequence coroutine
-///   KickSequence → grants invincibility immediately, resolves impact after kickImpactDelay
+///   TryKick() → snapshots pipe direction, plays animation, starts KickSequence
+///   KickSequence → grants invincibility immediately, resolves pipe impact after kickImpactDelay
 ///
-/// Invincibility is granted at kick commitment — not conditional on pipe cooldown.
-/// This ensures enemies are never punished for kicking correctly.
+/// Health display is self-contained — heart containers are instantiated at runtime
+/// based on maxTotalHealth and updated via onHealthChangedCallback.
 /// </summary>
 [RequireComponent(typeof(Rigidbody))]
 [RequireComponent(typeof(Animator))]
 public class EnemyAI : MonoBehaviour
 {
-    public delegate void OnHealthChangedDelegate();
-    public OnHealthChangedDelegate onHealthChangedCallback;
     // ─── Identity ─────────────────────────────────────────────────────────────
-    // Set by SpawnManager after instantiation
-    [HideInInspector] public bool isBoss = false;
+    [HideInInspector] public bool isBoss = false;   // Set by SpawnManager after instantiation
 
     // ─── Health ───────────────────────────────────────────────────────────────
     [Header("Health")]
-    [SerializeField]
-    private float health;
-    [SerializeField]
-    private float maxHealth;
-    [SerializeField]
-    private float maxTotalHealth;
-    public float Health { get { return health; } set { health = value; } }
-    public float MaxHealth { get { return maxHealth; } set { maxHealth = value; } }
-    public float MaxTotalHealth { get { return maxTotalHealth; } }
+    [SerializeField] private float health;
+    [SerializeField] private float maxHealth;
+    [SerializeField] private float maxTotalHealth;
 
-    private GameObject[] heartContainers;
-    private Image[] heartFills;
+    public float Health { get => health; set => health = value; }
+    public float MaxHealth { get => maxHealth; set => maxHealth = value; }
+    public float MaxTotalHealth => maxTotalHealth;
 
+    // Fired on every health change — drives UpdateHeartsHUD
+    public delegate void OnHealthChangedDelegate();
+    public OnHealthChangedDelegate onHealthChangedCallback;
+
+    // ─── Heart Display ────────────────────────────────────────────────────────
+    [Header("Heart Display")]
+    [Tooltip("Parent transform for instantiated heart containers.")]
     public Transform heartsParent;
+    [Tooltip("Same prefab used by HUDController — child 'HeartFill' Image required.")]
     public GameObject heartContainerPrefab;
 
-    // ─── State (read by PipeLogic for invincibility checks) ───────────────────
-    [HideInInspector] public bool isKicking = false;
-    [HideInInspector] public bool isInvincible = false;
+    private GameObject[] _heartContainers;
+    private Image[] _heartFills;
+
+    // ─── State ────────────────────────────────────────────────────────────────
+    [HideInInspector] public bool isKicking = false;  // Read by kickBehaviour
+    [HideInInspector] public bool isInvincible = false;  // Read by PipeLogic
 
     // ─── Jump ─────────────────────────────────────────────────────────────────
     [Header("Jump")]
@@ -54,22 +56,16 @@ public class EnemyAI : MonoBehaviour
     [Header("Kick Settings")]
     [SerializeField] private float kickRange = 1.2f;
     [SerializeField] private LayerMask pipeLayer;
-    [SerializeField] private Transform kickPoint;   // Child transform at foot position
+    [SerializeField] private Transform kickPoint;
 
-    [Tooltip("Seconds after kick starts before pipe impact is resolved. " +
-             "Set this to match the foot-strike frame of your kick animation.")]
+    [Tooltip("Seconds after kick starts before pipe impact resolves. " +
+             "Match this to the foot-strike frame of your kick animation.")]
     [SerializeField] private float kickImpactDelay = 0.15f;
 
-    [Tooltip("Total invincibility window. Should cover the full kick animation length. " +
-             "Must be >= kickImpactDelay.")]
+    [Tooltip("Total invincibility window. Must be >= kickImpactDelay.")]
     [SerializeField] private float kickInvincibilityDuration = 0.6f;
 
-    // ─── UI ───────────────────────────────────────────────────────────────────
-    [Header("UI")]
-    [SerializeField] private EnemyHealthUI healthUIPrefab;  // World-space health bar prefab
-
     // ─── Private ──────────────────────────────────────────────────────────────
-    // Boss kicks temporarily amplify the speed multiplier for a stronger hit
     private float KickSpeedBonus => isBoss ? 1.5f : 1f;
 
     private PipeLogic _pipe;
@@ -77,13 +73,11 @@ public class EnemyAI : MonoBehaviour
     private Rigidbody _rb;
     private Camera _mainCamera;
 
-    private EnemyHealthUI _spawnedHealthUI;
-    private Vector2 _pendingKickDirection;  // Snapshotted at kick start, used at impact
+    private Vector2 _pendingKickDirection;
     private bool _isDead;
 
     [SerializeField] private bool isGrounded;
 
-    // Animator hashes — computed once, never allocate strings at runtime
     private static readonly int IsGroundHash = Animator.StringToHash("isGround");
     private static readonly int JumpHash = Animator.StringToHash("Jump");
     private static readonly int IdleHash = Animator.StringToHash("Idle");
@@ -99,58 +93,33 @@ public class EnemyAI : MonoBehaviour
         _rb = GetComponent<Rigidbody>();
         _mainCamera = Camera.main;
 
-        // Should I use lists? Maybe :)
-        heartContainers = new GameObject[(int)PlayerStats.Instance.MaxTotalHealth];
-        heartFills = new Image[(int)PlayerStats.Instance.MaxTotalHealth];
-
-        onHealthChangedCallback += UpdateHeartsHUD;
         InstantiateHeartContainers();
+        onHealthChangedCallback += UpdateHeartsHUD;
         UpdateHeartsHUD();
-
-        //SpawnHealthUI();
     }
+
     private void LateUpdate()
     {
-        // Billboard toward camera
-        if (_mainCamera != null)
+        // Billboard hearts toward camera every frame
+        if (_mainCamera != null && heartsParent != null)
         {
-            heartsParent.LookAt(heartsParent.transform.position + _mainCamera.transform.rotation * Vector3.forward, _mainCamera.transform.rotation * Vector3.up);
-            
-            /*heartsParent.rotation =
-                Quaternion.LookRotation(
-                    heartsParent.position -
-                    _mainCamera.transform.position
-                );*/
+            heartsParent.LookAt(
+                heartsParent.position + _mainCamera.transform.rotation * Vector3.forward,
+                _mainCamera.transform.rotation * Vector3.up
+            );
         }
     }
 
     private void OnDestroy()
     {
-        // Health UI is a separate GameObject — must be cleaned up manually
-        if (_spawnedHealthUI != null)
-            Destroy(_spawnedHealthUI.gameObject);
+        onHealthChangedCallback -= UpdateHeartsHUD;
     }
-
-    #endregion
-
-    #region UI
-
-    /*
-    private void SpawnHealthUI()
-    {
-        if (healthUIPrefab == null) return;
-        _spawnedHealthUI = Instantiate(healthUIPrefab);
-        _spawnedHealthUI.Initialize(transform, maxHealth);
-    }*/
 
     #endregion
 
     #region AI Decision
 
-    /// <summary>
-    /// Called by EnemyTriggerArea after its reaction delay.
-    /// Rolls a decision based on current difficulty.
-    /// </summary>
+    /// <summary>Called by EnemyTriggerArea after its reaction delay.</summary>
     public void DecideAction()
     {
         if (_isDead) return;
@@ -173,9 +142,7 @@ public class EnemyAI : MonoBehaviour
     {
         if (!isGrounded) return;
 
-        // Zero vertical velocity for consistent jump height (same pattern as PlayerMovement)
         Vector3 v = _rb.linearVelocity; v.y = 0f; _rb.linearVelocity = v;
-
         _rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
         _animator.CrossFade(JumpHash, 0.05f);
     }
@@ -185,14 +152,13 @@ public class EnemyAI : MonoBehaviour
     #region Kick
 
     /// <summary>
-    /// Step 1 — snapshot pipe direction and start animation.
-    /// Pipe is NOT touched here — impact is deferred to KickSequence.
+    /// Step 1 — snapshot pipe direction, play animation.
+    /// Pipe is NOT touched here — deferred to KickSequence.
     /// </summary>
     private void TryKick()
     {
         if (_pipe == null) return;
 
-        // Snapshot current direction for animation choice and impact resolution
         _pendingKickDirection = _pipe.rotationDirection ? Vector2.right : Vector2.left;
 
         _animator.CrossFade(
@@ -204,9 +170,8 @@ public class EnemyAI : MonoBehaviour
     }
 
     /// <summary>
-    /// Step 2 — grants invincibility immediately, resolves pipe impact after kickImpactDelay.
-    /// Invincibility is unconditional — the enemy committed to the kick regardless of
-    /// whether the pipe cooldown blocks the speed change.
+    /// Step 2 — invincibility granted immediately on commitment.
+    /// Pipe impact resolved after kickImpactDelay seconds.
     /// </summary>
     private IEnumerator KickSequence()
     {
@@ -218,7 +183,6 @@ public class EnemyAI : MonoBehaviour
         if (!_isDead)
             ResolveKickImpact();
 
-        // Hold invincibility for the remainder of the animation
         float remaining = Mathf.Max(0f, kickInvincibilityDuration - kickImpactDelay);
         yield return new WaitForSeconds(remaining);
 
@@ -226,10 +190,6 @@ public class EnemyAI : MonoBehaviour
         isKicking = false;
     }
 
-    /// <summary>
-    /// Checks range and calls GetKicked at the visual impact frame.
-    /// Enemy still keeps their invincibility even if the pipe is on cooldown.
-    /// </summary>
     private void ResolveKickImpact()
     {
         if (_pipe == null) return;
@@ -243,7 +203,6 @@ public class EnemyAI : MonoBehaviour
 
         if (isBoss)
         {
-            // Boss temporarily amplifies the speed multiplier for a harder kick
             float original = _pipe.rotationSpeedMultiplier;
             _pipe.rotationSpeedMultiplier = original * KickSpeedBonus;
             _pipe.GetKicked(liveDirection);
@@ -253,10 +212,10 @@ public class EnemyAI : MonoBehaviour
         {
             _pipe.GetKicked(liveDirection);
         }
-        // Return value ignored — invincibility was already granted at kick start
+        // Return value ignored — invincibility was already granted unconditionally
     }
 
-    // Kept for any legacy animation event on clips — no-op, KickSequence drives timing now
+    // Legacy animation event stubs — KickSequence drives timing, these are no-ops
     public void OnKickImpact() { }
     public void OnKickWindowOpen() { }
     public void OnKickWindowClose() { }
@@ -265,7 +224,6 @@ public class EnemyAI : MonoBehaviour
 
     #region Health
 
-    /// <summary>Called by PipeLogic.OnCollisionEnter when pipe hits enemy without invincibility.</summary>
     public void TakeDamage(int amount)
     {
         if (_isDead || isInvincible) return;
@@ -273,24 +231,50 @@ public class EnemyAI : MonoBehaviour
         health -= amount;
         ClampHealth();
 
-        if (health < 1)
-        {
-            Die();
-        }
+        if (health < 1f) Die();
     }
 
-    public void Heal(float health)
+    public void Heal(float amount)
     {
-        this.health += health;
+        health += amount;
         ClampHealth();
     }
 
-    void ClampHealth()
+    private void ClampHealth()
     {
-        health = Mathf.Clamp(health, 0, maxHealth);
+        health = Mathf.Clamp(health, 0f, maxHealth);
+        onHealthChangedCallback?.Invoke();
+    }
 
-        if (onHealthChangedCallback != null)
-            onHealthChangedCallback.Invoke();
+    private void Die()
+    {
+        _isDead = true;
+        SpawnManager.instance.OnEnemyDied(gameObject);
+    }
+
+    #endregion
+
+    #region Heart Display
+
+    private void InstantiateHeartContainers()
+    {
+        if (heartContainerPrefab == null || heartsParent == null) return;
+
+        int total = Mathf.RoundToInt(maxTotalHealth);
+        _heartContainers = new GameObject[total];
+        _heartFills = new Image[total];
+
+        for (int i = 0; i < total; i++)
+        {
+            GameObject container = Instantiate(heartContainerPrefab, heartsParent, false);
+            _heartContainers[i] = container;
+
+            Transform fill = container.transform.Find("HeartFill");
+            if (fill != null)
+                _heartFills[i] = fill.GetComponent<Image>();
+            else
+                Debug.LogWarning($"[EnemyAI] Heart prefab slot {i} missing 'HeartFill' child.");
+        }
     }
 
     public void UpdateHeartsHUD()
@@ -299,64 +283,30 @@ public class EnemyAI : MonoBehaviour
         SetFilledHearts();
     }
 
-    void SetHeartContainers()
+    private void SetHeartContainers()
     {
-        for (int i = 0; i < heartContainers.Length; i++)
-        {
-            if (i < maxHealth)
-            {
-                heartContainers[i].SetActive(true);
-            }
-            else
-            {
-                heartContainers[i].SetActive(false);
-            }
-        }
-    }
-    void SetFilledHearts()
-    {
-        for (int i = 0; i < heartFills.Length; i++)
-        {
-            if (i < health)
-            {
-                heartFills[i].fillAmount = 1;
-            }
-            else
-            {
-                heartFills[i].fillAmount = 0;
-            }
-        }
-
-        if (health % 1 != 0)
-        {
-            int lastPos = Mathf.FloorToInt(health);
-            heartFills[lastPos].fillAmount = health % 1;
-        }
+        if (_heartContainers == null) return;
+        for (int i = 0; i < _heartContainers.Length; i++)
+            _heartContainers[i]?.SetActive(i < maxHealth);
     }
 
-    void InstantiateHeartContainers()
+    private void SetFilledHearts()
     {
-        for (int i = 0; i < maxTotalHealth; i++)
+        if (_heartFills == null) return;
+
+        for (int i = 0; i < _heartFills.Length; i++)
         {
-            GameObject temp = Instantiate(heartContainerPrefab);
-            temp.transform.SetParent(heartsParent, false);
-            heartContainers[i] = temp;
-            heartFills[i] = temp.transform.Find("HeartFill").GetComponent<Image>();
+            if (_heartFills[i] == null) continue;
+            _heartFills[i].fillAmount = i < health ? 1f : 0f;
         }
-    }
 
-    private void Die()
-    {
-        _isDead = true;
-        // SpawnManager handles Destroy — don't call it here and in SpawnManager both
-        SpawnManager.instance.OnEnemyDied(gameObject);
-    }
-
-    private IEnumerator KickInvincibility()
-    {
-        isInvincible = true;
-        yield return new WaitForSeconds(kickInvincibilityDuration);
-        isInvincible = false;
+        // Partial heart for fractional health values
+        if (health % 1f != 0f)
+        {
+            int partialSlot = Mathf.FloorToInt(health);
+            if (partialSlot < _heartFills.Length && _heartFills[partialSlot] != null)
+                _heartFills[partialSlot].fillAmount = health % 1f;
+        }
     }
 
     #endregion

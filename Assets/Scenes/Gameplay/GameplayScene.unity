@@ -373,7 +373,7 @@ Transform:
   m_GameObject: {fileID: 187162047}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: 1, z: -0, w: 0}
-  m_LocalPosition: {x: 0, y: 1, z: 8}
+  m_LocalPosition: {x: 0, y: 1, z: 7}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1080,7 +1080,7 @@ Transform:
   m_GameObject: {fileID: 455120579}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: 0.7071068, z: -0, w: 0.7071068}
-  m_LocalPosition: {x: -8, y: 1, z: 0}
+  m_LocalPosition: {x: -7, y: 1, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -2428,6 +2428,7 @@ GameObject:
   - component: {fileID: 1143834666}
   - component: {fileID: 1143834668}
   - component: {fileID: 1143834667}
+  - component: {fileID: 1143834669}
   m_Layer: 5
   m_Name: PauseMenu
   m_TagString: Untagged
@@ -2495,6 +2496,18 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1143834665}
   m_CullTransparentMesh: 1
+--- !u!225 &1143834669
+CanvasGroup:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1143834665}
+  m_Enabled: 1
+  m_Alpha: 1
+  m_Interactable: 1
+  m_BlocksRaycasts: 1
+  m_IgnoreParentGroups: 0
 --- !u!1 &1232463794
 GameObject:
   m_ObjectHideFlags: 0
@@ -2659,7 +2672,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c818dcec12aba6f418dffa3cd0ff8dd7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SpawnManager
-  standardEnemyPrefab: {fileID: 8541838877659824959, guid: 5ffdddf96af36e547acead7143001d88, type: 3}
+  enemyPrefabs:
+  - {fileID: 8541838877659824959, guid: 5ffdddf96af36e547acead7143001d88, type: 3}
+  - {fileID: 7046635318359642423, guid: 4b9e0f482f5c42d499dae748af3b8c10, type: 3}
+  - {fileID: 56471174133062936, guid: a6353bdda8f221a48a82c1d1f11a9c89, type: 3}
+  - {fileID: 1423096165623909828, guid: bebcd53288c3c8341bb26efc6dda5c91, type: 3}
   spawnPoints:
   - {fileID: 455120580}
   - {fileID: 187162048}
@@ -3262,7 +3279,7 @@ Transform:
   m_GameObject: {fileID: 1463263017}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0.7071068, z: -0, w: -0.7071068}
-  m_LocalPosition: {x: 8, y: 1, z: 0}
+  m_LocalPosition: {x: 7, y: 1, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -3567,6 +3584,7 @@ GameObject:
   - component: {fileID: 1569364200}
   - component: {fileID: 1569364202}
   - component: {fileID: 1569364201}
+  - component: {fileID: 1569364203}
   m_Layer: 5
   m_Name: GameOverMenu
   m_TagString: Untagged
@@ -3636,6 +3654,18 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1569364199}
   m_CullTransparentMesh: 1
+--- !u!225 &1569364203
+CanvasGroup:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1569364199}
+  m_Enabled: 1
+  m_Alpha: 1
+  m_Interactable: 1
+  m_BlocksRaycasts: 1
+  m_IgnoreParentGroups: 0
 --- !u!1 &1627260636
 GameObject:
   m_ObjectHideFlags: 0
@@ -4671,7 +4701,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6409001639519470428, guid: 2691c09bf36b3cd4787624946ce6a986, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -8
+      value: -7
       objectReference: {fileID: 0}
     - target: {fileID: 6409001639519470428, guid: 2691c09bf36b3cd4787624946ce6a986, type: 3}
       propertyPath: m_LocalRotation.w

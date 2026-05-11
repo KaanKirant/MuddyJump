@@ -90,10 +90,18 @@ public class GameManager : MonoBehaviour
     {
         if (!IsGameActive) return;
 
-        RisePlatform();
-        RampDifficulty();
+        // Only logic and UI in Update
         CheckSecondPipe();
         UpdateHUD();
+    }
+
+    private void FixedUpdate()
+    {
+        if (!IsGameActive) return;
+
+        // Physics-affecting movements MUST be in FixedUpdate
+        RisePlatform();
+        RampDifficulty();
     }
 
     #endregion
@@ -203,6 +211,25 @@ public class GameManager : MonoBehaviour
 
         PlayerPrefs.SetInt(BestScoreKey, TotalScore);
         PlayerPrefs.Save();
+    }
+
+    #endregion
+
+    #region Game Feel
+
+    // Added a global Hit-Stop routine for juicy impact feedback.
+    public void TriggerHitStop()
+    {
+        StartCoroutine(HitStopRoutine());
+    }
+
+    private System.Collections.IEnumerator HitStopRoutine()
+    {
+        // Drop timescale to near zero (don't use 0 to avoid complete locks)
+        Time.timeScale = 0.05f;
+        // Use real time so the pause actually resolves
+        yield return new WaitForSecondsRealtime(0.08f);
+        Time.timeScale = 1f;
     }
 
     #endregion
