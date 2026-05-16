@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a379d5402dab9f0468ad9c8184946a09, type: 3}
+  m_Name: EnemyAlienGreen
+  m_EditorClassIdentifier: Assembly-CSharp::EnemySpawnConfig
+  enemyPrefab: {fileID: 7046635318359642423, guid: 4b9e0f482f5c42d499dae748af3b8c10, type: 3}
+  spawnWeight: 1
+  difficultyThreshold: 0
+  isBoss: 0
+  description: Basic enemy
