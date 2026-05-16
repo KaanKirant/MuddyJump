@@ -1,20 +1,17 @@
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
 /// Rotates continuously and reacts to kicks and hits.
 ///
-/// Fix — hit reaction timing:
-///   anim.Play(state, layer, 0f) forces immediate playback from time=0.
-///   Previously called without normalizedTime, which allowed transition
-///   blending to delay the reaction visually.
+/// Direction convention: rotationDirection = true → clockwise (+Y axis).
 ///
-/// Fix — two-pipe same-target problem:
-///   A per-target HashSet (_recentlyHitTargets) prevents two pipes from
-///   damaging the same player/enemy within a single hit window.
-///   Each pipe has its own PipeLogic instance so cooldown flags are already
-///   independent — this adds the cross-pipe protection on the target side.
+/// GetKicked(): called by PlayerMovement and EnemyAI at their impact frames.
+///   Returns true if the kick landed (correct direction, not on cooldown).
+///   Flips direction and increases speed on success.
+///
+/// OnCollisionEnter: damages player or enemy if they fail to dodge/kick.
+///   Flips direction and decreases speed on hit.
 /// </summary>
 public class PipeLogic : MonoBehaviour
 {
@@ -25,6 +22,7 @@ public class PipeLogic : MonoBehaviour
     public bool rotationDirection = true;
 
     [Header("Cooldowns")]
+    [Tooltip("Seconds after a kick or hit before another collision is processed. Prevents chain damage.")]
     public float kickCooldown = 0.5f;
 
     [Header("Speed Clamp")]
@@ -34,15 +32,11 @@ public class PipeLogic : MonoBehaviour
     private bool _kickOnCooldown;
     private bool _hitOnCooldown;
 
-    // Cross-pipe hit protection — shared across all PipeLogic instances via static.
-    // When any pipe hits a target, that target's instance ID is locked for kickCooldown
-    // seconds so the second pipe cannot deal damage in the same window.
-    private static readonly HashSet<int> _recentlyHitTargets = new HashSet<int>();
-
     #region Unity Lifecycle
 
     private void Update()
     {
+        // Constant rotation — speed and direction are mutated by kicks and hits
         float dir = rotationDirection ? 1f : -1f;
         transform.Rotate(0f, rotationSpeed * dir * Time.deltaTime, 0f);
     }
@@ -56,27 +50,35 @@ public class PipeLogic : MonoBehaviour
             PlayerMovement player = collision.gameObject.GetComponentInParent<PlayerMovement>();
             if (player == null || player.IsInvincible) return;
 
-            // Cross-pipe guard — bail if another pipe already hit this player this frame
-            int id = player.GetEntityId();
-            if (_recentlyHitTargets.Contains(id)) return;
-
             PlayHitReaction(collision.gameObject);
             player.TakeDamage(1);
+
+            // Trigger immediate camera shake for arcade impact feedback
+            CameraController camera = Camera.main?.GetComponent<CameraController>();
+            if (camera != null) camera.TriggerShake(0.08f, 0.2f);
+
+            // Conservative hit-stop: shorter duration and less extreme timescale
+            // 0.1 timescale for 0.04s gives snappy feel without input lag
+            if (GameManager.instance != null) GameManager.instance.TriggerHitStop(0.1f, 0.04f);
+
             ResolveHit();
-            StartCoroutine(LockTarget(id));
         }
         else if (collision.gameObject.CompareTag("Enemy"))
         {
             EnemyAI enemy = collision.gameObject.GetComponentInParent<EnemyAI>();
             if (enemy == null || enemy.isInvincible) return;
 
-            int id = enemy.GetEntityId();
-            if (_recentlyHitTargets.Contains(id)) return;
-
             PlayHitReaction(collision.gameObject);
             enemy.TakeDamage(1);
+
+            // Trigger immediate camera shake for arcade impact feedback
+            CameraController camera = Camera.main?.GetComponent<CameraController>();
+            if (camera != null) camera.TriggerShake(0.08f, 0.2f);
+
+            // Conservative hit-stop: shorter duration and less extreme timescale
+            if (GameManager.instance != null) GameManager.instance.TriggerHitStop(0.1f, 0.04f);
+
             ResolveHit();
-            StartCoroutine(LockTarget(id));
         }
     }
 
@@ -84,18 +86,18 @@ public class PipeLogic : MonoBehaviour
 
     #region Hit / Kick Resolution
 
+    /// <summary>
+    /// Plays the correct hit-reaction animation on layer 1 of the target's Animator.
+    /// Searches parent first (character root), then children (sub-meshes).
+    /// </summary>
     private void PlayHitReaction(GameObject go)
     {
         Animator anim = go.GetComponentInParent<Animator>()
                      ?? go.GetComponentInChildren<Animator>();
-
-        if (anim == null) return;
-
-        // normalizedTime = 0f forces the state to start immediately from the beginning,
-        // bypassing any transition blend time — makes the reaction feel instant
-        anim.Play(rotationDirection ? "HitReactionRight" : "HitReactionLeft", 1, 0f);
+        anim?.Play(rotationDirection ? "HitReactionRight" : "HitReactionLeft", 1);
     }
 
+    /// <summary>Called after a successful pipe hit. Slows pipe down and reverses direction.</summary>
     private void ResolveHit()
     {
         rotationDirection = !rotationDirection;
@@ -103,6 +105,12 @@ public class PipeLogic : MonoBehaviour
         StartCoroutine(HitCooldown());
     }
 
+    /// <summary>
+    /// Called by PlayerMovement.CheckKickContact() and EnemyAI.OnKickImpact().
+    /// Returns true if the kick was valid and landed (correct direction, not on cooldown).
+    /// On success: reverses direction and speeds up.
+    /// On failure: returns false — caller decides whether to grant invincibility anyway.
+    /// </summary>
     public bool GetKicked(Vector2 direction)
     {
         if (_kickOnCooldown) return false;
@@ -117,6 +125,7 @@ public class PipeLogic : MonoBehaviour
         return true;
     }
 
+    /// <summary>Temporarily stops the pipe. Used for power-ups or special events.</summary>
     public void Freeze(float duration) => StartCoroutine(FreezeCoroutine(duration));
 
     #endregion
@@ -135,15 +144,6 @@ public class PipeLogic : MonoBehaviour
         _hitOnCooldown = true;
         yield return new WaitForSeconds(kickCooldown);
         _hitOnCooldown = false;
-    }
-
-    // Locks a target's instance ID in the shared set for kickCooldown seconds.
-    // Any other pipe that tries to hit this target during the window will be rejected.
-    private IEnumerator LockTarget(int instanceId)
-    {
-        _recentlyHitTargets.Add(instanceId);
-        yield return new WaitForSeconds(kickCooldown);
-        _recentlyHitTargets.Remove(instanceId);
     }
 
     private IEnumerator FreezeCoroutine(float duration)

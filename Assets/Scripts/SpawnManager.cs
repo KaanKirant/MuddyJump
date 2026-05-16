@@ -122,7 +122,7 @@ public class SpawnManager : MonoBehaviour
     {
         if (spawnPoints.Length == 0)
         {
-            Debug.LogWarning("[SpawnManager] Missing spawn points or enemy prefabs.");
+            Debug.LogWarning("[SpawnManager] Missing spawn points");
             return;
         }
 
