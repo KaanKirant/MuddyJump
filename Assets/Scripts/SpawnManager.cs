@@ -4,13 +4,14 @@ using UnityEngine;
 
 /// <summary>
 /// Manages enemy spawning via a continuous interval loop.
-/// No floor/wave concept — spawning is purely time and difficulty driven.
 ///
-/// Spawn interval shrinks from baseSpawnInterval → minSpawnInterval as
-/// DifficultyNormalized goes 0→1. Enemy health scales the same way.
+/// Overlap fix: GetFreeSpawnPoint compares XZ distance only.
+/// The platform rises continuously so enemy world-Y drifts away from
+/// spawn point world-Y every frame — a 3D distance check always reads
+/// "far apart" and lets enemies stack on the same XZ spot. Stripping Y
+/// before the check correctly detects same-tile occupancy.
 ///
-/// maxEnemiesAlive is a hard cap — the loop waits for a slot to open
-/// before spawning the next enemy.
+/// Supports multiple enemy prefabs via EnemySpawnEntry array.
 /// </summary>
 public class SpawnManager : MonoBehaviour
 {
@@ -18,32 +19,31 @@ public class SpawnManager : MonoBehaviour
 
     // ─── Enemy Setup ──────────────────────────────────────────────────────────
     [Header("Enemy Setup")]
-    public GameObject[] enemyPrefabs;
+    [Tooltip("Enemy variants. Each entry has a prefab, spawn weight, and difficulty threshold.")]
+    public EnemySpawnEntry[] enemyPrefabs;
     public Transform[] spawnPoints;
 
     // ─── Spawn Settings ───────────────────────────────────────────────────────
     [Header("Spawn Settings")]
-    [Tooltip("Maximum enemies alive simultaneously.")]
     public int maxEnemiesAlive = 3;
-    [Tooltip("Spawn interval in seconds at difficulty 0 (game start).")]
     public float baseSpawnInterval = 3f;
-    [Tooltip("Spawn interval in seconds at difficulty 1 (max speed).")]
     public float minSpawnInterval = 0.8f;
 
     // ─── Enemy Health Scaling ─────────────────────────────────────────────────
     [Header("Enemy Scaling")]
     public int baseEnemyHealth = 3;
-    [Tooltip("Max bonus HP added at full difficulty. Scales linearly from 0→this value.")]
     public int healthScaleBonus = 4;
+
+    // ─── Spawn Overlap ────────────────────────────────────────────────────────
+    [Header("Spawn Overlap")]
+    [Tooltip("Minimum XZ distance between a spawn point and any living enemy. " +
+             "Should be >= your character capsule diameter. Increase if enemies still stack.")]
+    public float occupiedRadius = 2.5f;
 
     // ─── Private ──────────────────────────────────────────────────────────────
     private readonly List<GameObject> _activeEnemies = new List<GameObject>();
     private Coroutine _spawnLoop;
     private bool _running;
-
-    // Squared distance threshold for "spawn point is occupied" check
-    // avoids sqrt per frame in GetFreeSpawnPoint
-    private const float OccupiedDistanceSqr = 1.5f * 1.5f;
 
     #region Unity Lifecycle
 
@@ -57,7 +57,6 @@ public class SpawnManager : MonoBehaviour
 
     #region Public API
 
-    /// <summary>Starts the spawn loop. Called by GameManager.Start().</summary>
     public void StartSpawning()
     {
         _running = true;
@@ -65,7 +64,6 @@ public class SpawnManager : MonoBehaviour
         _spawnLoop = StartCoroutine(SpawnLoop());
     }
 
-    /// <summary>Stops spawning and destroys all active enemies. Called by GameManager.EndGame().</summary>
     public void StopSpawning()
     {
         _running = false;
@@ -73,11 +71,6 @@ public class SpawnManager : MonoBehaviour
         ClearActiveEnemies();
     }
 
-    /// <summary>
-    /// Called by EnemyAI.Die() when an enemy's health hits 0.
-    /// Removes from tracking list, destroys the GameObject, and adds bonus score.
-    /// Note: Destroy is called here — EnemyAI.Die() must NOT also call Destroy.
-    /// </summary>
     public void OnEnemyDied(GameObject enemy)
     {
         _activeEnemies.Remove(enemy);
@@ -93,14 +86,12 @@ public class SpawnManager : MonoBehaviour
     {
         while (_running)
         {
-            // Block until a slot is free — preserves maxEnemiesAlive cap
             yield return new WaitUntil(() => ActiveEnemyCount() < maxEnemiesAlive || !_running);
 
             if (!_running) yield break;
 
             SpawnEnemy();
 
-            // Interval shrinks with difficulty — starts slow, ramps to aggressive
             float interval = Mathf.Lerp(
                 baseSpawnInterval,
                 minSpawnInterval,
@@ -116,19 +107,25 @@ public class SpawnManager : MonoBehaviour
 
     private void SpawnEnemy()
     {
-        if (spawnPoints.Length == 0 || enemyPrefabs.Length == 0)
+        if (enemyPrefabs == null || enemyPrefabs.Length == 0)
         {
-            Debug.LogWarning("[SpawnManager] Missing spawn points or enemy prefabs.");
+            Debug.LogWarning("[SpawnManager] No enemy prefabs assigned.");
+            return;
+        }
+
+        if (spawnPoints.Length == 0)
+        {
+            Debug.LogWarning("[SpawnManager] No spawn points assigned.");
             return;
         }
 
         Transform point = GetFreeSpawnPoint();
-        if (point == null) return;
+        if (point == null) return;   // All points occupied — skip this tick
 
-        // --- WHAT CHANGED --- Pick a random enemy from the array
-        GameObject selectedPrefab = enemyPrefabs[Random.Range(0, enemyPrefabs.Length)];
-        GameObject enemy = Instantiate(selectedPrefab, point.position, point.rotation);
+        GameObject prefab = PickEnemyPrefab();
+        if (prefab == null) return;
 
+        GameObject enemy = Instantiate(prefab, point.position, point.rotation);
         EnemyAI ai = enemy.GetComponent<EnemyAI>();
 
         if (ai != null)
@@ -142,13 +139,45 @@ public class SpawnManager : MonoBehaviour
         _activeEnemies.Add(enemy);
     }
 
+    /// <summary>
+    /// Weighted random selection from currently eligible prefabs.
+    /// A prefab is eligible when DifficultyNormalized >= unlockAtDifficulty.
+    /// Falls back to entry[0] if nothing else qualifies.
+    /// </summary>
+    private GameObject PickEnemyPrefab()
+    {
+        float difficulty = GameManager.instance.DifficultyNormalized;
+        float totalWeight = 0f;
+
+        for (int i = 0; i < enemyPrefabs.Length; i++)
+        {
+            if (enemyPrefabs[i].prefab != null && difficulty >= enemyPrefabs[i].unlockAtDifficulty)
+                totalWeight += enemyPrefabs[i].weight;
+        }
+
+        if (totalWeight <= 0f)
+            return enemyPrefabs[0].prefab;
+
+        float roll = Random.value * totalWeight;
+        float running = 0f;
+
+        for (int i = 0; i < enemyPrefabs.Length; i++)
+        {
+            if (enemyPrefabs[i].prefab == null) continue;
+            if (difficulty < enemyPrefabs[i].unlockAtDifficulty) continue;
+
+            running += enemyPrefabs[i].weight;
+            if (roll <= running)
+                return enemyPrefabs[i].prefab;
+        }
+
+        return enemyPrefabs[0].prefab;
+    }
+
     #endregion
 
     #region Helpers
 
-    /// <summary>
-    /// Returns live enemy count, pruning any null entries (destroyed mid-loop).
-    /// </summary>
     private int ActiveEnemyCount()
     {
         for (int i = _activeEnemies.Count - 1; i >= 0; i--)
@@ -157,12 +186,15 @@ public class SpawnManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Finds a spawn point not already occupied by an active enemy.
-    /// Starts at a random index to avoid always using the same points first.
-    /// Falls back to the random start point if all are occupied.
+    /// Returns a spawn point whose XZ position is at least occupiedRadius away
+    /// from every living enemy. Y is excluded — the platform rises continuously
+    /// so enemy world-Y is always higher than the spawn point's world-Y, making
+    /// a 3D distance check incorrectly pass and allowing XZ stacking.
+    /// Returns null if all points are occupied (spawn is skipped for this tick).
     /// </summary>
     private Transform GetFreeSpawnPoint()
     {
+        float radiusSqr = occupiedRadius * occupiedRadius;
         int startIndex = Random.Range(0, spawnPoints.Length);
 
         for (int i = 0; i < spawnPoints.Length; i++)
@@ -173,7 +205,12 @@ public class SpawnManager : MonoBehaviour
             for (int j = _activeEnemies.Count - 1; j >= 0; j--)
             {
                 if (_activeEnemies[j] == null) { _activeEnemies.RemoveAt(j); continue; }
-                if ((_activeEnemies[j].transform.position - point.position).sqrMagnitude < OccupiedDistanceSqr)
+
+                // Flatten both positions to XZ before comparing
+                Vector3 enemyXZ = _activeEnemies[j].transform.position; enemyXZ.y = 0f;
+                Vector3 pointXZ = point.position; pointXZ.y = 0f;
+
+                if ((enemyXZ - pointXZ).sqrMagnitude < radiusSqr)
                 {
                     occupied = true;
                     break;
@@ -183,7 +220,8 @@ public class SpawnManager : MonoBehaviour
             if (!occupied) return point;
         }
 
-        return spawnPoints[startIndex]; // All occupied — fallback
+        Debug.LogWarning("[SpawnManager] All spawn points occupied — skipping spawn this tick.");
+        return null;
     }
 
     private void ClearActiveEnemies()
@@ -194,4 +232,19 @@ public class SpawnManager : MonoBehaviour
     }
 
     #endregion
+}
+
+/// <summary>One enemy variant entry in the SpawnManager pool.</summary>
+[System.Serializable]
+public class EnemySpawnEntry
+{
+    [Tooltip("Enemy prefab to spawn.")]
+    public GameObject prefab;
+
+    [Tooltip("Relative spawn frequency. Higher = spawns more often among eligible entries.")]
+    public float weight = 1f;
+
+    [Tooltip("Only eligible when DifficultyNormalized >= this value. 0 = always available.")]
+    [Range(0f, 1f)]
+    public float unlockAtDifficulty = 0f;
 }
