@@ -18,7 +18,11 @@ public class SpawnManager : MonoBehaviour
 
     // ─── Enemy Setup ──────────────────────────────────────────────────────────
     [Header("Enemy Setup")]
-    public GameObject[] enemyPrefabs;
+
+    [Tooltip("Spawn configurations for each enemy type.")]
+    public List<EnemySpawnConfig> spawnConfigs = new List<EnemySpawnConfig>();
+
+    [Tooltip("Transforms representing spawn points in the scene.")]
     public Transform[] spawnPoints;
 
     // ─── Spawn Settings ───────────────────────────────────────────────────────
@@ -82,7 +86,7 @@ public class SpawnManager : MonoBehaviour
     {
         _activeEnemies.Remove(enemy);
         Destroy(enemy);
-        GameManager.instance.AddBonusScore(5);
+        GameManager.instance.AddBonusScore(5); // +5 score per kill
     }
 
     #endregion
@@ -116,7 +120,7 @@ public class SpawnManager : MonoBehaviour
 
     private void SpawnEnemy()
     {
-        if (spawnPoints.Length == 0 || enemyPrefabs.Length == 0)
+        if (spawnPoints.Length == 0)
         {
             Debug.LogWarning("[SpawnManager] Missing spawn points or enemy prefabs.");
             return;
@@ -125,10 +129,37 @@ public class SpawnManager : MonoBehaviour
         Transform point = GetFreeSpawnPoint();
         if (point == null) return;
 
-        // --- WHAT CHANGED --- Pick a random enemy from the array
-        GameObject selectedPrefab = enemyPrefabs[Random.Range(0, enemyPrefabs.Length)];
-        GameObject enemy = Instantiate(selectedPrefab, point.position, point.rotation);
+        GameObject selectedPrefab = null;
+        bool isBoss = false;
 
+        if (spawnConfigs.Count > 0)
+        {
+            // Filter configs by difficulty threshold and build weighted list
+            List<EnemySpawnConfig> validConfigs = new List<EnemySpawnConfig>();
+            float currentDifficulty = GameManager.instance != null
+                ? GameManager.instance.DifficultyNormalized
+                : 0f;
+
+            foreach (var config in spawnConfigs)
+            {
+                if (config.IsValidForSpawning() && currentDifficulty >= config.difficultyThreshold)
+                    validConfigs.Add(config);
+            }
+
+            if (validConfigs.Count == 0)
+            {
+                Debug.LogWarning("[SpawnManager] No valid spawn configs for current difficulty.");
+                return;
+            }
+
+            // Weighted random selection
+            EnemySpawnConfig selected = SelectWeightedConfig(validConfigs);
+            if (selected == null) return;
+
+            selectedPrefab = selected.enemyPrefab;
+            isBoss = selected.isBoss;
+        }
+        GameObject enemy = Instantiate(selectedPrefab, point.position, point.rotation);
         EnemyAI ai = enemy.GetComponent<EnemyAI>();
 
         if (ai != null)
@@ -136,10 +167,39 @@ public class SpawnManager : MonoBehaviour
             float d = GameManager.instance.DifficultyNormalized;
             ai.Health = baseEnemyHealth + Mathf.RoundToInt(healthScaleBonus * d);
             ai.MaxHealth = ai.Health;
-            ai.isBoss = false;
+            ai.isBoss = isBoss;
         }
 
         _activeEnemies.Add(enemy);
+    }
+
+    /// <summary>
+    /// Selects a random EnemySpawnConfig from the list weighted by spawnWeight.
+    /// Uses cumulative probability method for efficient weighted selection.
+    /// </summary>
+    private EnemySpawnConfig SelectWeightedConfig(List<EnemySpawnConfig> configs)
+    {
+        if (configs.Count == 0) return null;
+
+        // Calculate total weight
+        float totalWeight = 0f;
+        foreach (var config in configs)
+            totalWeight += config.spawnWeight;
+
+        if (totalWeight <= 0) return null;
+
+        // Pick random point in weight range
+        float pick = Random.Range(0f, totalWeight);
+        float cumulative = 0f;
+
+        // Return config at that point
+        foreach (var config in configs)
+        {
+            cumulative += config.spawnWeight;
+            if (pick <= cumulative) return config;
+        }
+
+        return configs[configs.Count - 1]; // Fallback to last (should not reach)
     }
 
     #endregion
