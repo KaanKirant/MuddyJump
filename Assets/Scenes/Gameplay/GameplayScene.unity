@@ -2673,10 +2673,18 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SpawnManager
   enemyPrefabs:
-  - {fileID: 8541838877659824959, guid: 5ffdddf96af36e547acead7143001d88, type: 3}
-  - {fileID: 7046635318359642423, guid: 4b9e0f482f5c42d499dae748af3b8c10, type: 3}
-  - {fileID: 56471174133062936, guid: a6353bdda8f221a48a82c1d1f11a9c89, type: 3}
-  - {fileID: 1423096165623909828, guid: bebcd53288c3c8341bb26efc6dda5c91, type: 3}
+  - prefab: {fileID: 8541838877659824959, guid: 5ffdddf96af36e547acead7143001d88, type: 3}
+    weight: 1
+    unlockAtDifficulty: 0
+  - prefab: {fileID: 7046635318359642423, guid: 4b9e0f482f5c42d499dae748af3b8c10, type: 3}
+    weight: 1
+    unlockAtDifficulty: 0
+  - prefab: {fileID: 56471174133062936, guid: a6353bdda8f221a48a82c1d1f11a9c89, type: 3}
+    weight: 1
+    unlockAtDifficulty: 0
+  - prefab: {fileID: 1423096165623909828, guid: bebcd53288c3c8341bb26efc6dda5c91, type: 3}
+    weight: 1
+    unlockAtDifficulty: 0
   spawnPoints:
   - {fileID: 455120580}
   - {fileID: 187162048}
