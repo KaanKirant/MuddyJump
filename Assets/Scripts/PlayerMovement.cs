@@ -32,6 +32,7 @@ public class PlayerMovement : MonoBehaviour
     [SerializeField] private float jumpForce = 12f;
     [SerializeField] private float slamForce = 18f;
     [SerializeField] private float fallGravity = 30f;
+    [SerializeField] private float fastFallMultiplier = 3f;
 
     // ─── Actions ──────────────────────────────────────────────────────────────
     [Header("Action Settings")]
@@ -166,14 +167,28 @@ public class PlayerMovement : MonoBehaviour
 
     private void DoFastFall()
     {
-        // Set v.y relative to platform so slam distance is consistent at any rise speed
+        // Use direct velocity assignment for immediate, responsive feedback.
+        // This gives instant weight and impact, much snappier than AddForce accumulation.
         float platformVY = GameManager.instance != null ? GameManager.instance.CurrentRiseSpeed : 0f;
+
+        // Slam velocity: strong downward acceleration relative to platform
+        // fastFallMultiplier (default 3x) creates satisfying arcade descent 
+        float slamVelocity = platformVY - (slamForce * fastFallMultiplier);
+
         Vector3 v = _rb.linearVelocity;
-        v.y = platformVY - slamForce;
+        v.y = slamVelocity;
         _rb.linearVelocity = v;
         _rb.angularVelocity = Vector3.zero;
 
+        // Play slam animation and trigger immediate feedback
         _animator.CrossFade(RollHash, 0.05f);
+
+        // Instant visual feedback: camera shake on slam initiation for arcade feel
+        CameraController camera = Camera.main?.GetComponent<CameraController>();
+        if (camera != null) camera.TriggerShake(0.08f, 0.12f);
+
+        // Light hit-stop to emphasize the slam commitment
+        if (GameManager.instance != null) GameManager.instance.TriggerHitStop(0.2f, 0.02f);
     }
 
     #endregion
@@ -192,7 +207,7 @@ public class PlayerMovement : MonoBehaviour
         _currentKickDirection = direction;
         _kickLandedThisSwing = false;
 
-        _animator.CrossFade(direction.x > 0f ? KickRightHash : KickLeftHash, 0.03f);
+        _animator.CrossFade(direction.x > 0f ? KickRightHash : KickLeftHash, 0.02f);
 
         // Window opens on animation event — aligns hit detection with actual wind-up
     }
@@ -253,6 +268,14 @@ public class PlayerMovement : MonoBehaviour
         CloseKickWindow();
 
         GameManager.instance.AddBonusScore(1);
+
+        // Lighter hit-stop on successful kick for responsive feedback (timescale 0.15, 0.03s)
+        // This feels crisp without disrupting gameplay flow
+        if (GameManager.instance != null) GameManager.instance.TriggerHitStop(0.15f, 0.03f);
+
+        // Camera shake on successful kick impact
+        CameraController camera = Camera.main?.GetComponent<CameraController>();
+        if (camera != null) camera.TriggerShake(0.06f, 0.15f);
 
         if (_invincibilityRoutine != null) StopCoroutine(_invincibilityRoutine);
         _invincibilityRoutine = StartCoroutine(KickInvincibility());
