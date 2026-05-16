@@ -163,7 +163,7 @@ public class EnemyAI : MonoBehaviour
 
         _animator.CrossFade(
             _pendingKickDirection == Vector2.right ? KickRightHash : KickLeftHash,
-            0.03f
+            0.02f
         );
 
         StartCoroutine(KickSequence());
@@ -212,6 +212,14 @@ public class EnemyAI : MonoBehaviour
         {
             _pipe.GetKicked(liveDirection);
         }
+
+        // Lighter hit-stop on successful kick for responsive feedback (timescale 0.15, 0.03s)
+        if (GameManager.instance != null) GameManager.instance.TriggerHitStop(0.15f, 0.03f);
+
+        // Camera shake on successful kick impact
+        CameraController camera = Camera.main?.GetComponent<CameraController>();
+        if (camera != null) camera.TriggerShake(0.06f, 0.15f);
+
         // Return value ignored — invincibility was already granted unconditionally
     }
 
