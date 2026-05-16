@@ -53,8 +53,13 @@ public class PipeLogic : MonoBehaviour
             PlayHitReaction(collision.gameObject);
             player.TakeDamage(1);
 
-            // --- WHAT CHANGED --- Trigger hit stop for game feel
-            if (GameManager.instance != null) GameManager.instance.TriggerHitStop();
+            // Trigger immediate camera shake for arcade impact feedback
+            CameraController camera = Camera.main?.GetComponent<CameraController>();
+            if (camera != null) camera.TriggerShake(0.08f, 0.2f);
+
+            // Conservative hit-stop: shorter duration and less extreme timescale
+            // 0.1 timescale for 0.04s gives snappy feel without input lag
+            if (GameManager.instance != null) GameManager.instance.TriggerHitStop(0.1f, 0.04f);
 
             ResolveHit();
         }
@@ -66,8 +71,12 @@ public class PipeLogic : MonoBehaviour
             PlayHitReaction(collision.gameObject);
             enemy.TakeDamage(1);
 
-            // --- WHAT CHANGED --- Trigger hit stop for game feel
-            if (GameManager.instance != null) GameManager.instance.TriggerHitStop();
+            // Trigger immediate camera shake for arcade impact feedback
+            CameraController camera = Camera.main?.GetComponent<CameraController>();
+            if (camera != null) camera.TriggerShake(0.08f, 0.2f);
+
+            // Conservative hit-stop: shorter duration and less extreme timescale
+            if (GameManager.instance != null) GameManager.instance.TriggerHitStop(0.1f, 0.04f);
 
             ResolveHit();
         }
