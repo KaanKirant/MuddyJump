@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a379d5402dab9f0468ad9c8184946a09, type: 3}
+  m_Name: EnemyAlienPink
+  m_EditorClassIdentifier: Assembly-CSharp::EnemySpawnConfig
+  enemyPrefab: {fileID: 56471174133062936, guid: a6353bdda8f221a48a82c1d1f11a9c89, type: 3}
+  spawnWeight: 1
+  difficultyThreshold: 0
+  isBoss: 0
+  description: Basic enemy
