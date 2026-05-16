@@ -217,18 +217,19 @@ public class GameManager : MonoBehaviour
 
     #region Game Feel
 
-    // Added a global Hit-Stop routine for juicy impact feedback.
-    public void TriggerHitStop()
+    /// <summary>
+    /// Triggers a brief hit-stop pause for arcade impact feedback.
+    /// Conservative values: timescale 0.1 for 0.04s provides snappy feel without input lag.
+    /// </summary>
+    public void TriggerHitStop(float timescale = 0.1f, float duration = 0.04f)
     {
-        StartCoroutine(HitStopRoutine());
+        StartCoroutine(HitStopRoutine(timescale, duration));
     }
 
-    private System.Collections.IEnumerator HitStopRoutine()
+    private System.Collections.IEnumerator HitStopRoutine(float timescale, float duration)
     {
-        // Drop timescale to near zero (don't use 0 to avoid complete locks)
-        Time.timeScale = 0.05f;
-        // Use real time so the pause actually resolves
-        yield return new WaitForSecondsRealtime(0.08f);
+        Time.timeScale = timescale;
+        yield return new WaitForSecondsRealtime(duration);
         Time.timeScale = 1f;
     }
 
