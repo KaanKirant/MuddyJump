@@ -21,6 +21,11 @@ public class PipeLogic : MonoBehaviour
     /// <summary>true = clockwise (+Y). Read by EnemyAI and PlayerMovement to decide kick direction.</summary>
     public bool rotationDirection = true;
 
+    [Header("Pipe Type")]
+    [Tooltip("If true, this pipe instant-kills on hit (no damage threshold). " +
+         "Used for the elevated second pipe. No kicking possible.")]
+    public bool isLethalPipe = false;
+
     [Header("Cooldowns")]
     [Tooltip("Seconds after a kick or hit before another collision is processed. Prevents chain damage.")]
     public float kickCooldown = 0.5f;
@@ -50,8 +55,16 @@ public class PipeLogic : MonoBehaviour
             PlayerMovement player = collision.gameObject.GetComponentInParent<PlayerMovement>();
             if (player == null || player.IsInvincible) return;
 
-            PlayHitReaction(collision.gameObject);
-            player.TakeDamage(1);
+            if (isLethalPipe)
+            {
+                // Instant kill — no animation reaction, no damage system
+                player.InstantKill();
+            }
+            else
+            {
+                PlayHitReaction(collision.gameObject);
+                player.TakeDamage(1);
+            }
 
             // Trigger immediate camera shake for arcade impact feedback
             CameraController camera = Camera.main?.GetComponent<CameraController>();
@@ -68,8 +81,16 @@ public class PipeLogic : MonoBehaviour
             EnemyAI enemy = collision.gameObject.GetComponentInParent<EnemyAI>();
             if (enemy == null || enemy.isInvincible) return;
 
-            PlayHitReaction(collision.gameObject);
-            enemy.TakeDamage(1);
+            if (isLethalPipe)
+            {
+                // Instant kill
+                enemy.InstantKill();
+            }
+            else
+            {
+                PlayHitReaction(collision.gameObject);
+                enemy.TakeDamage(1);
+            }
 
             // Trigger immediate camera shake for arcade impact feedback
             CameraController camera = Camera.main?.GetComponent<CameraController>();
@@ -113,6 +134,7 @@ public class PipeLogic : MonoBehaviour
     /// </summary>
     public bool GetKicked(Vector2 direction)
     {
+        if (isLethalPipe) return false;
         if (_kickOnCooldown) return false;
 
         bool kickingRight = direction.x > 0f && rotationDirection;
