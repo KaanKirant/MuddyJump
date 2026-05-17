@@ -4,13 +4,15 @@ using UnityEngine;
 
 /// <summary>
 /// Manages enemy spawning via a continuous interval loop.
-/// No floor/wave concept — spawning is purely time and difficulty driven.
 ///
-/// Spawn interval shrinks from baseSpawnInterval → minSpawnInterval as
-/// DifficultyNormalized goes 0→1. Enemy health scales the same way.
+/// Fix — spawn cooldown not working:
+///   Old order: wait for slot → spawn → wait interval
+///   The wait-for-slot unblocked the moment an enemy died, so the spawn
+///   happened instantly and the interval only applied to the NEXT cycle.
 ///
-/// maxEnemiesAlive is a hard cap — the loop waits for a slot to open
-/// before spawning the next enemy.
+///   New order: wait interval → wait for slot → spawn
+///   Every spawn now always has a cooldown before it, regardless of
+///   whether it was triggered by a death or by the loop cycling normally.
 /// </summary>
 public class SpawnManager : MonoBehaviour
 {
@@ -18,10 +20,8 @@ public class SpawnManager : MonoBehaviour
 
     // ─── Enemy Setup ──────────────────────────────────────────────────────────
     [Header("Enemy Setup")]
-
     [Tooltip("Spawn configurations for each enemy type.")]
     public List<EnemySpawnConfig> spawnConfigs = new List<EnemySpawnConfig>();
-
     [Tooltip("Transforms representing spawn points in the scene.")]
     public Transform[] spawnPoints;
 
@@ -31,23 +31,24 @@ public class SpawnManager : MonoBehaviour
     public int maxEnemiesAlive = 3;
     [Tooltip("Spawn interval in seconds at difficulty 0 (game start).")]
     public float baseSpawnInterval = 3f;
-    [Tooltip("Spawn interval in seconds at difficulty 1 (max speed).")]
+    [Tooltip("Minimum spawn interval in seconds at difficulty 1 (max).")]
     public float minSpawnInterval = 0.8f;
 
     // ─── Enemy Health Scaling ─────────────────────────────────────────────────
     [Header("Enemy Scaling")]
     public int baseEnemyHealth = 3;
-    [Tooltip("Max bonus HP added at full difficulty. Scales linearly from 0→this value.")]
+    [Tooltip("Max bonus HP added at full difficulty.")]
     public int healthScaleBonus = 4;
+
+    // ─── Spawn Overlap ────────────────────────────────────────────────────────
+    [Header("Spawn Overlap")]
+    [Tooltip("Minimum XZ distance between a spawn point and any living enemy.")]
+    public float occupiedRadius = 2.5f;
 
     // ─── Private ──────────────────────────────────────────────────────────────
     private readonly List<GameObject> _activeEnemies = new List<GameObject>();
     private Coroutine _spawnLoop;
     private bool _running;
-
-    // Squared distance threshold for "spawn point is occupied" check
-    // avoids sqrt per frame in GetFreeSpawnPoint
-    private const float OccupiedDistanceSqr = 1.5f * 1.5f;
 
     #region Unity Lifecycle
 
@@ -61,7 +62,6 @@ public class SpawnManager : MonoBehaviour
 
     #region Public API
 
-    /// <summary>Starts the spawn loop. Called by GameManager.Start().</summary>
     public void StartSpawning()
     {
         _running = true;
@@ -69,7 +69,6 @@ public class SpawnManager : MonoBehaviour
         _spawnLoop = StartCoroutine(SpawnLoop());
     }
 
-    /// <summary>Stops spawning and destroys all active enemies. Called by GameManager.EndGame().</summary>
     public void StopSpawning()
     {
         _running = false;
@@ -77,16 +76,11 @@ public class SpawnManager : MonoBehaviour
         ClearActiveEnemies();
     }
 
-    /// <summary>
-    /// Called by EnemyAI.Die() when an enemy's health hits 0.
-    /// Removes from tracking list, destroys the GameObject, and adds bonus score.
-    /// Note: Destroy is called here — EnemyAI.Die() must NOT also call Destroy.
-    /// </summary>
     public void OnEnemyDied(GameObject enemy)
     {
         _activeEnemies.Remove(enemy);
         Destroy(enemy);
-        GameManager.instance.AddBonusScore(5); // +5 score per kill
+        GameManager.instance.AddBonusScore(5);
     }
 
     #endregion
@@ -97,20 +91,28 @@ public class SpawnManager : MonoBehaviour
     {
         while (_running)
         {
-            // Block until a slot is free — preserves maxEnemiesAlive cap
-            yield return new WaitUntil(() => ActiveEnemyCount() < maxEnemiesAlive || !_running);
-
-            if (!_running) yield break;
-
-            SpawnEnemy();
-
-            // Interval shrinks with difficulty — starts slow, ramps to aggressive
+            // ── Wait the interval FIRST ──────────────────────────────────────
+            // This is the fix. Previously the interval came AFTER spawning,
+            // so a death would instantly unblock WaitUntil and spawn with
+            // zero delay. Now every spawn — initial or replacement — always
+            // waits a full interval before it can happen.
             float interval = Mathf.Lerp(
                 baseSpawnInterval,
                 minSpawnInterval,
                 GameManager.instance.DifficultyNormalized
             );
             yield return new WaitForSeconds(interval);
+
+            if (!_running) yield break;
+
+            // ── Then wait for a free slot ────────────────────────────────────
+            // If we're already under the cap this resolves immediately.
+            // If we're at the cap we wait here until a slot opens.
+            yield return new WaitUntil(() => ActiveEnemyCount() < maxEnemiesAlive || !_running);
+
+            if (!_running) yield break;
+
+            SpawnEnemy();
         }
     }
 
@@ -122,7 +124,7 @@ public class SpawnManager : MonoBehaviour
     {
         if (spawnPoints.Length == 0)
         {
-            Debug.LogWarning("[SpawnManager] Missing spawn points");
+            Debug.LogWarning("[SpawnManager] No spawn points assigned.");
             return;
         }
 
@@ -134,12 +136,11 @@ public class SpawnManager : MonoBehaviour
 
         if (spawnConfigs.Count > 0)
         {
-            // Filter configs by difficulty threshold and build weighted list
-            List<EnemySpawnConfig> validConfigs = new List<EnemySpawnConfig>();
             float currentDifficulty = GameManager.instance != null
                 ? GameManager.instance.DifficultyNormalized
                 : 0f;
 
+            List<EnemySpawnConfig> validConfigs = new List<EnemySpawnConfig>();
             foreach (var config in spawnConfigs)
             {
                 if (config.IsValidForSpawning() && currentDifficulty >= config.difficultyThreshold)
@@ -152,13 +153,15 @@ public class SpawnManager : MonoBehaviour
                 return;
             }
 
-            // Weighted random selection
             EnemySpawnConfig selected = SelectWeightedConfig(validConfigs);
             if (selected == null) return;
 
             selectedPrefab = selected.enemyPrefab;
             isBoss = selected.isBoss;
         }
+
+        if (selectedPrefab == null) return;
+
         GameObject enemy = Instantiate(selectedPrefab, point.position, point.rotation);
         EnemyAI ai = enemy.GetComponent<EnemyAI>();
 
@@ -173,42 +176,30 @@ public class SpawnManager : MonoBehaviour
         _activeEnemies.Add(enemy);
     }
 
-    /// <summary>
-    /// Selects a random EnemySpawnConfig from the list weighted by spawnWeight.
-    /// Uses cumulative probability method for efficient weighted selection.
-    /// </summary>
     private EnemySpawnConfig SelectWeightedConfig(List<EnemySpawnConfig> configs)
     {
         if (configs.Count == 0) return null;
 
-        // Calculate total weight
         float totalWeight = 0f;
-        foreach (var config in configs)
-            totalWeight += config.spawnWeight;
+        foreach (var config in configs) totalWeight += config.spawnWeight;
+        if (totalWeight <= 0f) return null;
 
-        if (totalWeight <= 0) return null;
-
-        // Pick random point in weight range
         float pick = Random.Range(0f, totalWeight);
         float cumulative = 0f;
 
-        // Return config at that point
         foreach (var config in configs)
         {
             cumulative += config.spawnWeight;
             if (pick <= cumulative) return config;
         }
 
-        return configs[configs.Count - 1]; // Fallback to last (should not reach)
+        return configs[configs.Count - 1];
     }
 
     #endregion
 
     #region Helpers
 
-    /// <summary>
-    /// Returns live enemy count, pruning any null entries (destroyed mid-loop).
-    /// </summary>
     private int ActiveEnemyCount()
     {
         for (int i = _activeEnemies.Count - 1; i >= 0; i--)
@@ -217,12 +208,13 @@ public class SpawnManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Finds a spawn point not already occupied by an active enemy.
-    /// Starts at a random index to avoid always using the same points first.
-    /// Falls back to the random start point if all are occupied.
+    /// XZ-only distance check — Y is excluded because on a fixed platform
+    /// enemies may be at slightly different heights after jumping.
+    /// Returns null if all points are occupied (spawn skipped this tick).
     /// </summary>
     private Transform GetFreeSpawnPoint()
     {
+        float radiusSqr = occupiedRadius * occupiedRadius;
         int startIndex = Random.Range(0, spawnPoints.Length);
 
         for (int i = 0; i < spawnPoints.Length; i++)
@@ -233,7 +225,11 @@ public class SpawnManager : MonoBehaviour
             for (int j = _activeEnemies.Count - 1; j >= 0; j--)
             {
                 if (_activeEnemies[j] == null) { _activeEnemies.RemoveAt(j); continue; }
-                if ((_activeEnemies[j].transform.position - point.position).sqrMagnitude < OccupiedDistanceSqr)
+
+                Vector3 enemyXZ = _activeEnemies[j].transform.position; enemyXZ.y = 0f;
+                Vector3 pointXZ = point.position; pointXZ.y = 0f;
+
+                if ((enemyXZ - pointXZ).sqrMagnitude < radiusSqr)
                 {
                     occupied = true;
                     break;
@@ -243,7 +239,8 @@ public class SpawnManager : MonoBehaviour
             if (!occupied) return point;
         }
 
-        return spawnPoints[startIndex]; // All occupied — fallback
+        Debug.LogWarning("[SpawnManager] All spawn points occupied — skipping spawn.");
+        return null;
     }
 
     private void ClearActiveEnemies()
