@@ -142,6 +142,7 @@ public class EnemyAI : MonoBehaviour
     {
         if (!isGrounded) return;
 
+        // Platform no longer moves — just simple jump
         Vector3 v = _rb.linearVelocity; v.y = 0f; _rb.linearVelocity = v;
         _rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
         _animator.CrossFade(JumpHash, 0.05f);
@@ -240,6 +241,12 @@ public class EnemyAI : MonoBehaviour
         ClampHealth();
 
         if (health < 1f) Die();
+    }
+
+    public void InstantKill()
+    {
+        _isDead = true;
+        SpawnManager.instance.OnEnemyDied(gameObject);
     }
 
     public void Heal(float amount)
