@@ -116,7 +116,7 @@ MonoBehaviour:
   heartContainerPrefab: {fileID: 1000013667988280, guid: 677e3f20f0ab76a45bd59d5b73b0b446, type: 3}
   isKicking: 0
   isInvincible: 0
-  jumpForce: 16
+  jumpForce: 18
   kickRange: 2.5
   pipeLayer:
     serializedVersion: 2
@@ -124,7 +124,6 @@ MonoBehaviour:
   kickPoint: {fileID: 4459672634235169525}
   kickImpactDelay: 0.15
   kickInvincibilityDuration: 0.4
-  healthUIPrefab: {fileID: -6658544198436406485, guid: 3683d1890a89fef41a3dac95e8d88535, type: 3}
   isGrounded: 0
 --- !u!95 &6724199473557787587
 Animator:
