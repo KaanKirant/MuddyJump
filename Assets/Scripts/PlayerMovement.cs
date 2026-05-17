@@ -29,9 +29,9 @@ public class PlayerMovement : MonoBehaviour
 
     // ─── Physics ──────────────────────────────────────────────────────────────
     [Header("Physics Settings")]
-    [SerializeField] private float jumpForce = 12f;
-    [SerializeField] private float slamForce = 18f;
-    [SerializeField] private float fallGravity = 30f;
+    [SerializeField] private float jumpForce = 18f;
+    [SerializeField] private float slamForce = 15f;
+    [SerializeField] private float fallGravity = 10f;
 
     // ─── Actions ──────────────────────────────────────────────────────────────
     [Header("Action Settings")]
