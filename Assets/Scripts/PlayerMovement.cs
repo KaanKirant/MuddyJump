@@ -32,7 +32,6 @@ public class PlayerMovement : MonoBehaviour
     [SerializeField] private float jumpForce = 12f;
     [SerializeField] private float slamForce = 18f;
     [SerializeField] private float fallGravity = 30f;
-    [SerializeField] private float fastFallMultiplier = 3f;
 
     // ─── Actions ──────────────────────────────────────────────────────────────
     [Header("Action Settings")]
@@ -144,11 +143,9 @@ public class PlayerMovement : MonoBehaviour
     {
         _lastJumpTime = Time.time;
 
-        // Match platform velocity before adding impulse so jump height is
-        // consistent regardless of how fast the platform is rising
-        float platformVY = GameManager.instance != null ? GameManager.instance.CurrentRiseSpeed : 0f;
+        // Platform no longer moves — just zero Y velocity and add impulse
         Vector3 v = _rb.linearVelocity;
-        v.y = platformVY;
+        v.y = 0f;
         _rb.linearVelocity = v;
 
         _rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
@@ -167,20 +164,12 @@ public class PlayerMovement : MonoBehaviour
 
     private void DoFastFall()
     {
-        // Use direct velocity assignment for immediate, responsive feedback.
-        // This gives instant weight and impact, much snappier than AddForce accumulation.
-        float platformVY = GameManager.instance != null ? GameManager.instance.CurrentRiseSpeed : 0f;
-
-        // Slam velocity: strong downward acceleration relative to platform
-        // fastFallMultiplier (default 3x) creates satisfying arcade descent 
-        float slamVelocity = platformVY - (slamForce * fastFallMultiplier);
-
+        // Platform no longer moves — just set Y velocity directly
         Vector3 v = _rb.linearVelocity;
-        v.y = slamVelocity;
+        v.y = -slamForce;
         _rb.linearVelocity = v;
         _rb.angularVelocity = Vector3.zero;
 
-        // Play slam animation and trigger immediate feedback
         _animator.CrossFade(RollHash, 0.05f);
 
         // Instant visual feedback: camera shake on slam initiation for arcade feel
@@ -306,6 +295,12 @@ public class PlayerMovement : MonoBehaviour
 
         // Reset regen — must survive a full interval before recovering
         RestartRegenLoop();
+    }
+
+    /// <summary>Instant death — bypasses normal invincibility (used by lethal pipes).</summary>
+    public void InstantKill()
+    {
+        GameManager.instance.EndGame();
     }
 
     /// <summary>
