@@ -7,10 +7,8 @@ public class CameraController : MonoBehaviour
     public Transform player;
 
     [Header("Follow Settings")]
+    [Tooltip("Fixed offset from the arena origin (usually behind and above the player spawn).")]
     public Vector3 offset = new Vector3(0f, 3f, -8f);
-    public float followSmoothTime = 0.1f;
-    public float verticalDeadzone = 0.5f;
-
 
     [Header("Camera Shake")]
     [Tooltip("Maximum displacement per axis during shake.")]
@@ -18,10 +16,7 @@ public class CameraController : MonoBehaviour
     [Tooltip("Default shake duration in seconds.")]
     public float shakeDuration = 0.1f;
 
-    // RiseToFloor is now called every frame from GameManager with the live platform Y,
-    // so riseSpeed is no longer needed — we just track the given target directly.
-    private float _targetY;
-    private Vector3 _velocity;
+
     private Vector3 _shakeOffset;
     private Coroutine _shakeRoutine;
 
@@ -29,34 +24,10 @@ public class CameraController : MonoBehaviour
     {
         if (player == null) return;
 
-        // Calculate the target Y: follow the player only within the deadzone margin
-        // to avoid camera jitter from minor platform bumps or physics micromovements.
-        float diff = player.position.y - _targetY;
-        float verticalOffset = Mathf.Abs(diff) < verticalDeadzone ? 0f : diff - Mathf.Sign(diff) * verticalDeadzone;
-
-        Vector3 target = new Vector3(
-            0f,                                              // Arena is circular — lock X
-            _targetY + offset.y + GetVerticalOffset(),
-            offset.z
-        );
-
-        transform.position = Vector3.SmoothDamp(
-            transform.position, target, ref _velocity, followSmoothTime
-        );
+        // Static offset — no smoothing, no follow, no deadzone
+        // Camera position is just player.position + offset (in world space relative to arena)
+        transform.position = player.position + offset;
     }
-
-    // Follows the player vertically only when they move beyond the deadzone,
-    // so minor ground bumps don't jitter the camera.
-    private float GetVerticalOffset()
-    {
-        float diff = player.position.y - _targetY;
-        if (Mathf.Abs(diff) < verticalDeadzone) return 0f;
-        return diff - Mathf.Sign(diff) * verticalDeadzone;
-    }
-
-    // GameManager calls this every frame (or on floor transitions).
-    // Accepts the live platform world Y directly.
-    public void RiseToFloor(float newTargetY) => _targetY = newTargetY;
 
     /// <summary>
     /// Triggers a brief camera shake for impact feedback.
