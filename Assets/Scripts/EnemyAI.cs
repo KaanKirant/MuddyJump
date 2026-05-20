@@ -6,12 +6,12 @@ using UnityEngine.UI;
 /// Controls a single enemy's decision-making, movement, kick logic, and health.
 ///
 /// Decision flow (triggered by EnemyTriggerArea when pipe enters range):
-///   DecideAction() → rolls kick/jump/hesitate based on DifficultyNormalized
+///   DecideAction() → rolls kick/jump/hesitate based on difficulty and tunable ranges
 ///   TryKick() → snapshots pipe direction, plays animation, starts KickSequence
 ///   KickSequence → grants invincibility immediately, resolves pipe impact after kickImpactDelay
 ///
-/// Health display is self-contained — heart containers are instantiated at runtime
-/// based on maxTotalHealth and updated via onHealthChangedCallback.
+/// All AI decision probabilities are exposed in the Inspector under "AI Decisions"
+/// so behaviour can be tuned without touching code.
 /// </summary>
 [RequireComponent(typeof(Rigidbody))]
 [RequireComponent(typeof(Animator))]
@@ -30,7 +30,6 @@ public class EnemyAI : MonoBehaviour
     public float MaxHealth { get => maxHealth; set => maxHealth = value; }
     public float MaxTotalHealth => maxTotalHealth;
 
-    // Fired on every health change — drives UpdateHeartsHUD
     public delegate void OnHealthChangedDelegate();
     public OnHealthChangedDelegate onHealthChangedCallback;
 
@@ -38,15 +37,15 @@ public class EnemyAI : MonoBehaviour
     [Header("Heart Display")]
     [Tooltip("Parent transform for instantiated heart containers.")]
     public Transform heartsParent;
-    [Tooltip("Same prefab used by HUDController — child 'HeartFill' Image required.")]
+    [Tooltip("Prefab with a child Image named 'HeartFill' (Filled type).")]
     public GameObject heartContainerPrefab;
 
     private GameObject[] _heartContainers;
     private Image[] _heartFills;
 
     // ─── State ────────────────────────────────────────────────────────────────
-    [HideInInspector] public bool isKicking = false;  // Read by kickBehaviour
-    [HideInInspector] public bool isInvincible = false;  // Read by PipeLogic
+    [HideInInspector] public bool isKicking = false;
+    [HideInInspector] public bool isInvincible = false;
 
     // ─── Jump ─────────────────────────────────────────────────────────────────
     [Header("Jump")]
@@ -58,12 +57,30 @@ public class EnemyAI : MonoBehaviour
     [SerializeField] private LayerMask pipeLayer;
     [SerializeField] private Transform kickPoint;
 
-    [Tooltip("Seconds after kick starts before pipe impact resolves. " +
-             "Match this to the foot-strike frame of your kick animation.")]
+    [Tooltip("Seconds after kick animation starts before pipe impact is resolved. " +
+             "Match to the foot-strike frame of your kick animation.")]
     [SerializeField] private float kickImpactDelay = 0.15f;
 
-    [Tooltip("Total invincibility window. Must be >= kickImpactDelay.")]
+    [Tooltip("Total invincibility window from kick start. Must be >= kickImpactDelay.")]
     [SerializeField] private float kickInvincibilityDuration = 0.6f;
+
+    // ─── AI Decisions ─────────────────────────────────────────────────────────
+    [Header("AI Decisions")]
+    [Tooltip("Kick probability at difficulty 0 (game start). 0 = never kicks, 1 = always kicks.")]
+    [Range(0f, 1f)]
+    [SerializeField] private float kickChanceAtMinDifficulty = 0.3f;
+
+    [Tooltip("Kick probability at difficulty 1 (max). Should be higher than min.")]
+    [Range(0f, 1f)]
+    [SerializeField] private float kickChanceAtMaxDifficulty = 0.75f;
+
+    [Tooltip("Hesitate (do nothing) probability at difficulty 0. Gives the player breathing room early game.")]
+    [Range(0f, 1f)]
+    [SerializeField] private float hesitateChanceAtMinDifficulty = 0.3f;
+
+    [Tooltip("Hesitate probability at difficulty 1. Should be lower than min — enemies react faster at high difficulty.")]
+    [Range(0f, 1f)]
+    [SerializeField] private float hesitateChanceAtMaxDifficulty = 0f;
 
     // ─── Private ──────────────────────────────────────────────────────────────
     private float KickSpeedBonus => isBoss ? 1.5f : 1f;
@@ -100,7 +117,6 @@ public class EnemyAI : MonoBehaviour
 
     private void LateUpdate()
     {
-        // Billboard hearts toward camera every frame
         if (_mainCamera != null && heartsParent != null)
         {
             heartsParent.LookAt(
@@ -119,14 +135,24 @@ public class EnemyAI : MonoBehaviour
 
     #region AI Decision
 
-    /// <summary>Called by EnemyTriggerArea after its reaction delay.</summary>
+    /// <summary>
+    /// Called by EnemyTriggerArea after its reaction delay.
+    /// Rolls kick / jump / hesitate based on current difficulty and Inspector-tuned ranges.
+    /// </summary>
     public void DecideAction()
     {
         if (_isDead) return;
 
         float difficulty = GameManager.instance != null ? GameManager.instance.DifficultyNormalized : 0f;
-        float hesitateChance = Mathf.Clamp(0.3f - difficulty * 0.3f, 0f, 0.3f);
-        float kickChance = Mathf.Clamp(0.4f + difficulty * 0.35f, 0f, 0.75f);
+
+        // Lerp both chances across the difficulty range — fully tunable in Inspector
+        float kickChance = Mathf.Lerp(kickChanceAtMinDifficulty, kickChanceAtMaxDifficulty, difficulty);
+        float hesitateChance = Mathf.Lerp(hesitateChanceAtMinDifficulty, hesitateChanceAtMaxDifficulty, difficulty);
+
+        // Clamp so kick + hesitate never exceed 1 (remaining probability goes to jump)
+        kickChance = Mathf.Clamp01(kickChance);
+        hesitateChance = Mathf.Clamp01(hesitateChance);
+
         float roll = Random.value;
 
         if (roll < kickChance) TryKick();
@@ -142,7 +168,6 @@ public class EnemyAI : MonoBehaviour
     {
         if (!isGrounded) return;
 
-        // Platform no longer moves — just simple jump
         Vector3 v = _rb.linearVelocity; v.y = 0f; _rb.linearVelocity = v;
         _rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
         _animator.CrossFade(JumpHash, 0.05f);
@@ -153,8 +178,8 @@ public class EnemyAI : MonoBehaviour
     #region Kick
 
     /// <summary>
-    /// Step 1 — snapshot pipe direction, play animation.
-    /// Pipe is NOT touched here — deferred to KickSequence.
+    /// Step 1 — snapshot pipe direction and play animation.
+    /// Pipe contact is deferred to KickSequence.
     /// </summary>
     private void TryKick()
     {
@@ -171,8 +196,8 @@ public class EnemyAI : MonoBehaviour
     }
 
     /// <summary>
-    /// Step 2 — invincibility granted immediately on commitment.
-    /// Pipe impact resolved after kickImpactDelay seconds.
+    /// Step 2 — invincibility granted immediately on kick commitment.
+    /// Pipe impact resolved after kickImpactDelay to match the animation.
     /// </summary>
     private IEnumerator KickSequence()
     {
@@ -199,32 +224,29 @@ public class EnemyAI : MonoBehaviour
         bool pipeInRange = Physics.CheckSphere(origin, kickRange, pipeLayer);
         if (!pipeInRange) return;
 
-        // Re-read live direction at impact — pipe may have turned since decision
+        // Re-read live direction at impact — pipe may have turned since the decision
         Vector2 liveDirection = _pipe.rotationDirection ? Vector2.right : Vector2.left;
 
         if (isBoss)
         {
-            float original = _pipe.rotationSpeedMultiplier;
-            _pipe.rotationSpeedMultiplier = original * KickSpeedBonus;
+            // Boss temporarily amplifies kick multiplier for a harder hit
+            float original = _pipe.kickSpeedMultiplier;
+            _pipe.kickSpeedMultiplier = original * KickSpeedBonus;
             _pipe.GetKicked(liveDirection);
-            _pipe.rotationSpeedMultiplier = original;
+            _pipe.kickSpeedMultiplier = original;
         }
         else
         {
             _pipe.GetKicked(liveDirection);
         }
 
-        // Lighter hit-stop on successful kick for responsive feedback (timescale 0.15, 0.03s)
-        if (GameManager.instance != null) GameManager.instance.TriggerHitStop(0.15f, 0.03f);
+        GameManager.instance?.TriggerHitStop(0.15f, 0.03f);
 
-        // Camera shake on successful kick impact
-        CameraController camera = Camera.main?.GetComponent<CameraController>();
-        if (camera != null) camera.TriggerShake(0.06f, 0.15f);
-
-        // Return value ignored — invincibility was already granted unconditionally
+        CameraController cam = Camera.main?.GetComponent<CameraController>();
+        cam?.TriggerShake(0.06f, 0.15f);
     }
 
-    // Legacy animation event stubs — KickSequence drives timing, these are no-ops
+    // Legacy animation event stubs — KickSequence drives timing
     public void OnKickImpact() { }
     public void OnKickWindowOpen() { }
     public void OnKickWindowClose() { }
@@ -315,7 +337,6 @@ public class EnemyAI : MonoBehaviour
             _heartFills[i].fillAmount = i < health ? 1f : 0f;
         }
 
-        // Partial heart for fractional health values
         if (health % 1f != 0f)
         {
             int partialSlot = Mathf.FloorToInt(health);
