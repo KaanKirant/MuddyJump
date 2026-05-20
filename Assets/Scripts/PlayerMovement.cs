@@ -20,9 +20,9 @@ using UnityEngine;
 [RequireComponent(typeof(Animator))]
 public class PlayerMovement : MonoBehaviour
 {
-    // ─── Health / Regen ───────────────────────────────────────────────────────
+    // ─── Health ───────────────────────────────────────────────────────────────
     [Header("Health")]
-    [Tooltip("Seconds to regenerate one full heart.")]
+    [Tooltip("Seconds to regenerate one full heart. Used when a regen consumable is active.")]
     [SerializeField] private float lifeRegenInterval = 15f;
     [Tooltip("Grace window after a hit — prevents chain damage.")]
     [SerializeField] private float hitInvincibilityDuration = 2f;
@@ -106,7 +106,8 @@ public class PlayerMovement : MonoBehaviour
 
     private void Start()
     {
-        _regenRoutine = StartCoroutine(RegenLoop());
+        // Regen is dormant until a consumable item triggers it.
+        // Wire up: _regenRoutine = StartCoroutine(RegenLoop()) from the item system.
     }
 
     private void FixedUpdate()
@@ -292,9 +293,6 @@ public class PlayerMovement : MonoBehaviour
 
         if (_invincibilityRoutine != null) StopCoroutine(_invincibilityRoutine);
         _invincibilityRoutine = StartCoroutine(HitInvincibility());
-
-        // Reset regen — must survive a full interval before recovering
-        RestartRegenLoop();
     }
 
     /// <summary>Instant death — bypasses normal invincibility (used by lethal pipes).</summary>
@@ -303,19 +301,27 @@ public class PlayerMovement : MonoBehaviour
         GameManager.instance.EndGame();
     }
 
+    // ── Regen — DORMANT ───────────────────────────────────────────────────────
+    // Health regeneration is not active. It will be driven by a consumable
+    // item once the item system is built. Do not call these methods directly.
+    // To re-enable: call StartRegen() from the item that grants regeneration.
+
     /// <summary>
+    /// Starts a regen cycle. Called by a consumable item — not on game start.
     /// Fills one heart at a time over lifeRegenInterval seconds.
-    /// Restarted from zero by TakeDamage — damage resets the regen timer.
     /// </summary>
+    public void StartRegen()
+    {
+        RestartRegenLoop();
+    }
+
     private IEnumerator RegenLoop()
     {
         while (true)
         {
-            // Sleep until health is missing
             if (PlayerStats.Instance.Health >= PlayerStats.Instance.MaxHealth)
                 yield return new WaitUntil(() => PlayerStats.Instance.Health < PlayerStats.Instance.MaxHealth);
 
-            // Fill toward the next whole heart
             float target = Mathf.Min(Mathf.Floor(PlayerStats.Instance.Health) + 1f, PlayerStats.Instance.MaxHealth);
 
             while (PlayerStats.Instance.Health < target)
