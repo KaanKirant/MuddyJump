@@ -36,8 +36,8 @@ public class EnemyTriggerArea : MonoBehaviour
 
     private IEnumerator WaitToReact(PipeLogic pipe)
     {
-        // Clamp speed floor to 1 so we never divide by zero
-        float speed = Mathf.Max(pipe.rotationSpeed, 1f);
+        // Use BaseSpeed — the difficulty floor set by GameManager each frame
+        float speed = Mathf.Max(pipe.BaseSpeed, 1f);
         float reactionTime = Mathf.Clamp(baseReactionTime * (50f / speed), 0.05f, baseReactionTime);
 
         yield return new WaitForSeconds(reactionTime);

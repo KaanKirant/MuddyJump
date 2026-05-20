@@ -2,35 +2,47 @@
 using UnityEngine.SceneManagement;
 
 /// <summary>
-/// Central game loop driver.
+/// Central game loop driver. Owns difficulty ramp, score, pipe base speed,
+/// second pipe unlock, and game-over flow.
 ///
-/// Platform movement is gone — the arena is static in world space.
-/// The illusion of upward movement is handled entirely by BackgroundScroller.
-/// GameManager still owns DifficultyNormalized and DistanceTraveled (score).
+/// Pipe speed model: GameManager writes to PipeLogic.BaseSpeed each frame
+/// as the difficulty floor. PipeLogic maintains its own _runtimeSpeed that
+/// kicks and hits modify independently — those changes are never overwritten here.
 /// </summary>
 public class GameManager : MonoBehaviour
 {
     public static GameManager instance;
 
-    [Header("Difficulty / Score")]
+    // ─── Difficulty ───────────────────────────────────────────────────────────
+    [Header("Difficulty")]
+    [Tooltip("Virtual speed at game start. Used only for DifficultyNormalized calculation.")]
     public float baseRiseSpeed = 2f;
-    public float maxRiseSpeed = 12f;
-    [Tooltip("Speed units added per second — controls how quickly difficulty ramps.")]
-    public float speedRampRate = 0.05f;
 
-    [Header("Pipe Difficulty")]
+    [Tooltip("Virtual speed at max difficulty.")]
+    public float maxRiseSpeed = 12f;
+
+    [Tooltip("How fast virtual speed ramps up per second. " +
+             "0.15 reaches max difficulty in ~67 seconds. 0.05 takes ~200 seconds.")]
+    public float speedRampRate = 0.15f;
+
+    // ─── Pipe Difficulty ──────────────────────────────────────────────────────
+    [Header("Pipe Base Speed")]
     public PipeLogic mainPipe;
     public PipeLogic secondPipe;
-    public float basePipeSpeed = 50f;
-    public float maxPipeSpeed = 120f;
+
+    [Tooltip("Pipe BaseSpeed at difficulty 0. Should feel slow but not trivial.")]
+    public float basePipeSpeed = 60f;
+
+    [Tooltip("Pipe BaseSpeed at difficulty 1 (max). Should feel genuinely threatening.")]
+    public float maxPipeSpeed = 200f;
+
+    [Tooltip("1 = pipe speed fully tracks difficulty. Lower = pipe stays easier than difficulty suggests.")]
     public float pipeSpeedDifficultyScale = 1f;
 
+    // ─── Second Pipe ──────────────────────────────────────────────────────────
     [Header("Second Pipe")]
-    [Tooltip("Distance traveled before the second pipe activates.")]
-    public float secondPipeUnlockDistance = 100f;
-
-    [Header("Camera")]
-    public CameraController cameraController;
+    [Tooltip("Distance accumulated before the second pipe activates.")]
+    public float secondPipeUnlockDistance = 150f;
 
     // ─── Public State ─────────────────────────────────────────────────────────
     public float DistanceTraveled { get; private set; }
@@ -40,12 +52,13 @@ public class GameManager : MonoBehaviour
     public bool IsGameActive { get; private set; } = true;
 
     /// <summary>
-    /// 0→1 difficulty. Single source of truth — read by SpawnManager,
-    /// EnemyAI, PipeLogic scaling, and BackgroundScroller.
+    /// 0→1 difficulty. Single source of truth for all systems.
+    /// Reaches 1 when CurrentRiseSpeed hits maxRiseSpeed.
     /// </summary>
     public float DifficultyNormalized =>
         Mathf.InverseLerp(baseRiseSpeed, maxRiseSpeed, CurrentRiseSpeed);
 
+    // ─── Private ──────────────────────────────────────────────────────────────
     private const string BestScoreKey = "BEST_SCORE";
     private bool _secondPipeUnlocked;
 
@@ -80,7 +93,7 @@ public class GameManager : MonoBehaviour
 
     #endregion
 
-    #region Difficulty & Distance
+    #region Difficulty
 
     private void RampDifficulty()
     {
@@ -92,16 +105,15 @@ public class GameManager : MonoBehaviour
         float t = DifficultyNormalized * pipeSpeedDifficultyScale;
         float pipeSpeed = Mathf.Lerp(basePipeSpeed, maxPipeSpeed, t);
 
-        if (mainPipe != null) mainPipe.rotationSpeed = pipeSpeed;
+        // Write to BaseSpeed — this is the difficulty floor.
+        // PipeLogic._runtimeSpeed handles the live speed and is never touched here,
+        // so kicks and hits keep their effect until they decay naturally.
+        if (mainPipe != null) mainPipe.BaseSpeed = pipeSpeed;
 
         if (_secondPipeUnlocked && secondPipe != null)
-            secondPipe.rotationSpeed = pipeSpeed;   // Second pipe matches main — it's already harder by design
+            secondPipe.BaseSpeed = pipeSpeed;
     }
 
-    /// <summary>
-    /// Distance no longer comes from physical platform movement.
-    /// CurrentRiseSpeed acts as a virtual "metres per second" for score purposes.
-    /// </summary>
     private void AccumulateDistance()
     {
         DistanceTraveled += CurrentRiseSpeed * Time.deltaTime;
@@ -169,8 +181,8 @@ public class GameManager : MonoBehaviour
     #region Game Feel
 
     /// <summary>
-    /// Triggers a brief hit-stop pause for arcade impact feedback.
-    /// Conservative values: timescale 0.1 for 0.04s provides snappy feel without input lag.
+    /// Brief time-scale freeze for arcade impact feedback.
+    /// Called by PipeLogic on hits and PlayerMovement on kicks.
     /// </summary>
     public void TriggerHitStop(float timescale = 0.1f, float duration = 0.04f)
     {

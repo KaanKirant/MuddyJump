@@ -1,49 +1,93 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
 /// Rotates continuously and reacts to kicks and hits.
 ///
+/// Speed model — two separate values:
+///   BaseSpeed      set by GameManager every frame as the difficulty floor.
+///   _runtimeSpeed  the live rotation speed, modified by kicks (+) and hits (-).
+///                  Decays back toward BaseSpeed over time so the pipe
+///                  never stays artificially fast or slow forever.
+///
+/// This separation means kicks and hits actually have a lasting effect
+/// instead of being overwritten on the next GameManager Update tick.
+///
 /// Direction convention: rotationDirection = true → clockwise (+Y axis).
-///
-/// GetKicked(): called by PlayerMovement and EnemyAI at their impact frames.
-///   Returns true if the kick landed (correct direction, not on cooldown).
-///   Flips direction and increases speed on success.
-///
-/// OnCollisionEnter: damages player or enemy if they fail to dodge/kick.
-///   Flips direction and decreases speed on hit.
 /// </summary>
 public class PipeLogic : MonoBehaviour
 {
-    public float rotationSpeed = 50f;
-    public float rotationSpeedMultiplier = 1.25f;
+    // ─── Speed ────────────────────────────────────────────────────────────────
+    [Header("Speed")]
+    [Tooltip("Set by GameManager each frame as the difficulty floor. " +
+             "Do not key-frame or set this directly — use GameManager pipe speed settings.")]
+    public float BaseSpeed = 60f;
 
+    [Tooltip("How strongly each successful kick multiplies the runtime speed. " +
+             "1.4 = 40% faster per kick.")]
+    public float kickSpeedMultiplier = 1.4f;
+
+    [Tooltip("How strongly each hit divides the runtime speed. " +
+             "1.3 = 30% slower per hit.")]
+    public float hitSpeedDivisor = 1.3f;
+
+    [Tooltip("How fast runtime speed decays back toward BaseSpeed (units per second). " +
+             "Higher = snappier recovery. 0 = no decay.")]
+    public float speedDecayRate = 8f;
+
+    [Header("Speed Clamp")]
+    [Tooltip("Absolute minimum rotation speed regardless of hits.")]
+    [SerializeField] private float minSpeed = 30f;
+    [Tooltip("Absolute maximum rotation speed regardless of kicks.")]
+    [SerializeField] private float maxSpeed = 300f;
+
+    // ─── Pipe Type ────────────────────────────────────────────────────────────
+    [Header("Pipe Type")]
+    [Tooltip("If true this pipe instant-kills on contact. No kicking possible. " +
+             "Used for the elevated second pipe.")]
+    public bool isLethalPipe = false;
+
+    // ─── Cooldowns ────────────────────────────────────────────────────────────
+    [Header("Cooldowns")]
+    [Tooltip("Seconds after a hit before this pipe can damage again. Prevents chain hits.")]
+    public float hitCooldown = 0.5f;
+
+    [Tooltip("Seconds after a kick before another kick registers. Prevents kick spam.")]
+    public float kickCooldown = 0.3f;
+
+    // ─── State ────────────────────────────────────────────────────────────────
     /// <summary>true = clockwise (+Y). Read by EnemyAI and PlayerMovement to decide kick direction.</summary>
     public bool rotationDirection = true;
 
-    [Header("Pipe Type")]
-    [Tooltip("If true, this pipe instant-kills on hit (no damage threshold). " +
-         "Used for the elevated second pipe. No kicking possible.")]
-    public bool isLethalPipe = false;
-
-    [Header("Cooldowns")]
-    [Tooltip("Seconds after a kick or hit before another collision is processed. Prevents chain damage.")]
-    public float kickCooldown = 0.5f;
-
-    [Header("Speed Clamp")]
-    [SerializeField] private float minSpeed = 25f;
-    [SerializeField] private float maxSpeed = 200f;
+    // ─── Private ──────────────────────────────────────────────────────────────
+    private float _runtimeSpeed;   // Live speed — modified by kicks and hits, decays to BaseSpeed
 
     private bool _kickOnCooldown;
     private bool _hitOnCooldown;
 
+    // Cross-pipe hit protection — shared across all PipeLogic instances.
+    // Prevents two pipes from hitting the same target in the same window.
+    private static readonly HashSet<int> _recentlyHitTargets = new HashSet<int>();
+
     #region Unity Lifecycle
+
+    private void Awake()
+    {
+        _runtimeSpeed = BaseSpeed;
+    }
 
     private void Update()
     {
-        // Constant rotation — speed and direction are mutated by kicks and hits
+        // Decay runtime speed back toward BaseSpeed — kicks/hits have lasting but not permanent effect
+        if (speedDecayRate > 0f)
+            _runtimeSpeed = Mathf.MoveTowards(_runtimeSpeed, BaseSpeed, speedDecayRate * Time.deltaTime);
+
+        // Clamp in case BaseSpeed itself changed (GameManager ramps it every frame)
+        _runtimeSpeed = Mathf.Clamp(_runtimeSpeed, minSpeed, maxSpeed);
+
         float dir = rotationDirection ? 1f : -1f;
-        transform.Rotate(0f, rotationSpeed * dir * Time.deltaTime, 0f);
+        transform.Rotate(0f, _runtimeSpeed * dir * Time.deltaTime, 0f);
     }
 
     private void OnCollisionEnter(Collision collision)
@@ -55,51 +99,50 @@ public class PipeLogic : MonoBehaviour
             PlayerMovement player = collision.gameObject.GetComponentInParent<PlayerMovement>();
             if (player == null || player.IsInvincible) return;
 
+            int id = player.GetHashCode();
+            if (_recentlyHitTargets.Contains(id)) return;
+
             if (isLethalPipe)
             {
-                // Instant kill — no animation reaction, no damage system
                 player.InstantKill();
             }
             else
             {
                 PlayHitReaction(collision.gameObject);
                 player.TakeDamage(1);
+                ResolveHit();
             }
 
-            // Trigger immediate camera shake for arcade impact feedback
-            CameraController camera = Camera.main?.GetComponent<CameraController>();
-            if (camera != null) camera.TriggerShake(0.08f, 0.2f);
+            CameraController cam = Camera.main?.GetComponent<CameraController>();
+            cam?.TriggerShake(0.08f, 0.2f);
+            GameManager.instance?.TriggerHitStop(0.1f, 0.04f);
 
-            // Conservative hit-stop: shorter duration and less extreme timescale
-            // 0.1 timescale for 0.04s gives snappy feel without input lag
-            if (GameManager.instance != null) GameManager.instance.TriggerHitStop(0.1f, 0.04f);
-
-            ResolveHit();
+            StartCoroutine(LockTarget(id));
         }
         else if (collision.gameObject.CompareTag("Enemy"))
         {
             EnemyAI enemy = collision.gameObject.GetComponentInParent<EnemyAI>();
             if (enemy == null || enemy.isInvincible) return;
 
+            int id = enemy.GetHashCode();
+            if (_recentlyHitTargets.Contains(id)) return;
+
             if (isLethalPipe)
             {
-                // Instant kill
                 enemy.InstantKill();
             }
             else
             {
                 PlayHitReaction(collision.gameObject);
                 enemy.TakeDamage(1);
+                ResolveHit();
             }
 
-            // Trigger immediate camera shake for arcade impact feedback
-            CameraController camera = Camera.main?.GetComponent<CameraController>();
-            if (camera != null) camera.TriggerShake(0.08f, 0.2f);
+            CameraController cam = Camera.main?.GetComponent<CameraController>();
+            cam?.TriggerShake(0.08f, 0.2f);
+            GameManager.instance?.TriggerHitStop(0.1f, 0.04f);
 
-            // Conservative hit-stop: shorter duration and less extreme timescale
-            if (GameManager.instance != null) GameManager.instance.TriggerHitStop(0.1f, 0.04f);
-
-            ResolveHit();
+            StartCoroutine(LockTarget(id));
         }
     }
 
@@ -107,30 +150,29 @@ public class PipeLogic : MonoBehaviour
 
     #region Hit / Kick Resolution
 
-    /// <summary>
-    /// Plays the correct hit-reaction animation on layer 1 of the target's Animator.
-    /// Searches parent first (character root), then children (sub-meshes).
-    /// </summary>
     private void PlayHitReaction(GameObject go)
     {
         Animator anim = go.GetComponentInParent<Animator>()
                      ?? go.GetComponentInChildren<Animator>();
-        anim?.Play(rotationDirection ? "HitReactionRight" : "HitReactionLeft", 1);
-    }
-
-    /// <summary>Called after a successful pipe hit. Slows pipe down and reverses direction.</summary>
-    private void ResolveHit()
-    {
-        rotationDirection = !rotationDirection;
-        rotationSpeed = Mathf.Clamp(rotationSpeed / rotationSpeedMultiplier, minSpeed, maxSpeed);
-        StartCoroutine(HitCooldown());
+        anim?.Play(rotationDirection ? "HitReactionRight" : "HitReactionLeft", 1, 0f);
     }
 
     /// <summary>
-    /// Called by PlayerMovement.CheckKickContact() and EnemyAI.OnKickImpact().
-    /// Returns true if the kick was valid and landed (correct direction, not on cooldown).
-    /// On success: reverses direction and speeds up.
-    /// On failure: returns false — caller decides whether to grant invincibility anyway.
+    /// Called when the pipe successfully hits a target.
+    /// Slows the pipe down and reverses direction — reward for the player surviving.
+    /// </summary>
+    private void ResolveHit()
+    {
+        rotationDirection = !rotationDirection;
+        _runtimeSpeed = Mathf.Clamp(_runtimeSpeed / hitSpeedDivisor, minSpeed, maxSpeed);
+        StartCoroutine(HitCooldownRoutine());
+    }
+
+    /// <summary>
+    /// Called by PlayerMovement.CheckKickContact() and EnemyAI.ResolveKickImpact().
+    /// Returns true if the kick landed (correct direction, not on cooldown).
+    /// On success: reverses direction and increases runtime speed.
+    /// The speed increase persists — GameManager only controls BaseSpeed, not _runtimeSpeed.
     /// </summary>
     public bool GetKicked(Vector2 direction)
     {
@@ -142,38 +184,45 @@ public class PipeLogic : MonoBehaviour
         if (!kickingRight && !kickingLeft) return false;
 
         rotationDirection = !rotationDirection;
-        rotationSpeed = Mathf.Clamp(rotationSpeed * rotationSpeedMultiplier, minSpeed, maxSpeed);
-        StartCoroutine(KickCooldown());
+        _runtimeSpeed = Mathf.Clamp(_runtimeSpeed * kickSpeedMultiplier, minSpeed, maxSpeed);
+        StartCoroutine(KickCooldownRoutine());
         return true;
     }
 
-    /// <summary>Temporarily stops the pipe. Used for power-ups or special events.</summary>
+    /// <summary>Temporarily stops the pipe. Used by power-ups or special events.</summary>
     public void Freeze(float duration) => StartCoroutine(FreezeCoroutine(duration));
 
     #endregion
 
     #region Coroutines
 
-    private IEnumerator KickCooldown()
+    private IEnumerator KickCooldownRoutine()
     {
         _kickOnCooldown = true;
         yield return new WaitForSeconds(kickCooldown);
         _kickOnCooldown = false;
     }
 
-    private IEnumerator HitCooldown()
+    private IEnumerator HitCooldownRoutine()
     {
         _hitOnCooldown = true;
-        yield return new WaitForSeconds(kickCooldown);
+        yield return new WaitForSeconds(hitCooldown);
         _hitOnCooldown = false;
+    }
+
+    private IEnumerator LockTarget(int instanceId)
+    {
+        _recentlyHitTargets.Add(instanceId);
+        yield return new WaitForSeconds(hitCooldown);
+        _recentlyHitTargets.Remove(instanceId);
     }
 
     private IEnumerator FreezeCoroutine(float duration)
     {
-        float saved = rotationSpeed;
-        rotationSpeed = 0f;
+        float saved = _runtimeSpeed;
+        _runtimeSpeed = 0f;
         yield return new WaitForSeconds(duration);
-        rotationSpeed = saved;
+        _runtimeSpeed = saved;
     }
 
     #endregion
