@@ -1826,7 +1826,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CameraController
   player: {fileID: 1493018220}
-  offset: {x: 0, y: 1.7, z: -1.3}
+  offset: {x: 0, y: 5, z: -5}
   shakeAmount: 0.15
   shakeDuration: 0.1
 --- !u!4 &336476719 stripped
@@ -2177,8 +2177,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -960, y: 402}
-  m_SizeDelta: {x: 135, y: 16}
+  m_AnchoredPosition: {x: -322, y: 742}
+  m_SizeDelta: {x: 47.344, y: 16}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &375084641
 MonoBehaviour:
