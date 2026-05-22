@@ -1689,7 +1689,7 @@ Camera:
     height: 1
   near clip plane: 0.3
   far clip plane: 1000
-  field of view: 100
+  field of view: 101
   orthographic: 0
   orthographic size: 5
   m_Depth: -1
@@ -1716,7 +1716,7 @@ Transform:
   m_GameObject: {fileID: 330585543}
   serializedVersion: 2
   m_LocalRotation: {x: 0.18369402, y: 0, z: 0, w: 0.98298347}
-  m_LocalPosition: {x: 0, y: 4, z: -8.5}
+  m_LocalPosition: {x: 0, y: 7, z: -12.46}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -5804,13 +5804,16 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ec786f9ba38876542a0433e64f073749, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PipeLogic
-  rotationSpeed: 50
-  rotationSpeedMultiplier: 1.25
-  rotationDirection: 1
-  isLethalPipe: 0
-  kickCooldown: 0.5
+  BaseSpeed: 60
+  kickSpeedMultiplier: 1.4
+  hitSpeedDivisor: 1.3
+  speedDecayRate: 8
   minSpeed: 25
   maxSpeed: 200
+  isLethalPipe: 0
+  hitCooldown: 0.5
+  kickCooldown: 0.5
+  rotationDirection: 1
 --- !u!1001 &866012255
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -5957,13 +5960,16 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ec786f9ba38876542a0433e64f073749, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PipeLogic
-  rotationSpeed: 50
-  rotationSpeedMultiplier: 1.25
-  rotationDirection: 1
-  isLethalPipe: 0
-  kickCooldown: 0.5
+  BaseSpeed: 60
+  kickSpeedMultiplier: 1.4
+  hitSpeedDivisor: 1.3
+  speedDecayRate: 8
   minSpeed: 25
   maxSpeed: 200
+  isLethalPipe: 0
+  hitCooldown: 0.5
+  kickCooldown: 0.5
+  rotationDirection: 1
 --- !u!4 &916525013 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 1576488453971394810, guid: a778b631c6253a04899cb31bad047c81, type: 3}
@@ -7751,13 +7757,16 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ec786f9ba38876542a0433e64f073749, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PipeLogic
-  rotationSpeed: 50
-  rotationSpeedMultiplier: 1.25
-  rotationDirection: 1
-  isLethalPipe: 0
-  kickCooldown: 0.5
+  BaseSpeed: 60
+  kickSpeedMultiplier: 1.4
+  hitSpeedDivisor: 1.3
+  speedDecayRate: 8
   minSpeed: 25
   maxSpeed: 200
+  isLethalPipe: 0
+  hitCooldown: 0.5
+  kickCooldown: 0.5
+  rotationDirection: 1
 --- !u!54 &1232463797
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -7823,7 +7832,6 @@ MonoBehaviour:
   maxPipeSpeed: 120
   pipeSpeedDifficultyScale: 1
   secondPipeUnlockDistance: 100
-  cameraController: {fileID: 330585549}
 --- !u!4 &1232843544
 Transform:
   m_ObjectHideFlags: 0
@@ -7965,6 +7973,7 @@ MonoBehaviour:
   minSpawnInterval: 2
   baseEnemyHealth: 3
   healthScaleBonus: 4
+  occupiedRadius: 2.5
 --- !u!4 &1252781232
 Transform:
   m_ObjectHideFlags: 0
@@ -8238,8 +8247,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 1, y: 1}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 1009, y: 368}
-  m_SizeDelta: {x: 160, y: 30}
+  m_AnchoredPosition: {x: 443, y: 875}
+  m_SizeDelta: {x: 156.714, y: 126.94}
   m_Pivot: {x: 1, y: 1}
 --- !u!114 &1269453435
 MonoBehaviour:
@@ -9093,13 +9102,13 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 24
-  m_fontSizeBase: 24
+  m_fontSize: 95
+  m_fontSizeBase: 95
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 18
   m_fontSizeMax: 72
-  m_fontStyle: 0
+  m_fontStyle: 1
   m_HorizontalAlignment: 2
   m_VerticalAlignment: 512
   m_textAlignment: 65535
@@ -10481,7 +10490,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 1}
   m_AnchorMax: {x: 0.5, y: 1}
-  m_AnchoredPosition: {x: 172, y: 396}
+  m_AnchoredPosition: {x: -367, y: 850}
   m_SizeDelta: {x: 200, y: 50}
   m_Pivot: {x: 0.5, y: 1}
 --- !u!114 &1669654616
@@ -12797,7 +12806,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 1}
   m_AnchorMax: {x: 0.5, y: 1}
-  m_AnchoredPosition: {x: -212, y: 396}
+  m_AnchoredPosition: {x: 11, y: 850}
   m_SizeDelta: {x: 200, y: 50}
   m_Pivot: {x: 0.5, y: 1}
 --- !u!114 &1972800102
@@ -13371,13 +13380,16 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ec786f9ba38876542a0433e64f073749, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PipeLogic
-  rotationSpeed: 50
-  rotationSpeedMultiplier: 1.25
-  rotationDirection: 1
-  isLethalPipe: 1
-  kickCooldown: 0.5
+  BaseSpeed: 60
+  kickSpeedMultiplier: 1.4
+  hitSpeedDivisor: 1.3
+  speedDecayRate: 8
   minSpeed: 25
   maxSpeed: 200
+  isLethalPipe: 1
+  hitCooldown: 0.5
+  kickCooldown: 0.5
+  rotationDirection: 1
 --- !u!1001 &2075326767
 PrefabInstance:
   m_ObjectHideFlags: 0
