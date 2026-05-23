@@ -260,6 +260,7 @@ public class EnemyAI : MonoBehaviour
             _committedKickDirection == Vector2.right ? KickRightHash : KickLeftHash,
             0.02f
         );
+        SoundManager.Instance?.PlaySFX(SoundType.KickAttempt);
     }
 
     /// <summary>

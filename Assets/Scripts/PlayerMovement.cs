@@ -198,7 +198,7 @@ public class PlayerMovement : MonoBehaviour
         _kickLandedThisSwing = false;
 
         _animator.CrossFade(direction.x > 0f ? KickRightHash : KickLeftHash, 0.02f);
-
+        SoundManager.Instance?.PlaySFX(SoundType.KickAttempt);
         // Window opens on animation event — aligns hit detection with actual wind-up
     }
 

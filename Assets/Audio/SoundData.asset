@@ -12,5 +12,36 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 39b48d4be330ed64984196ff108ae6ed, type: 3}
   m_Name: SoundData
   m_EditorClassIdentifier: Assembly-CSharp::SoundData
-  sfxEntries: []
-  musicEntries: []
+  sfxEntries:
+  - type: 12
+    clip: {fileID: 8300000, guid: 43c2e24f347561d4cb2a399e5468283f, type: 3}
+    volume: 0.158
+    pitch: 0
+    pitchVariance: 0
+  - type: 3
+    clip: {fileID: 8300000, guid: a37f44cbf8c2a7443a3c361efa2f233a, type: 3}
+    volume: 0.158
+    pitch: 0
+    pitchVariance: 0
+  - type: 9
+    clip: {fileID: 8300000, guid: a37f44cbf8c2a7443a3c361efa2f233a, type: 3}
+    volume: 0.12
+    pitch: 0
+    pitchVariance: 0
+  - type: 1
+    clip: {fileID: 8300000, guid: 75adfe9a619833445a701305b983e548, type: 3}
+    volume: 0.12
+    pitch: 0
+    pitchVariance: 0
+  - type: 0
+    clip: {fileID: 8300000, guid: fe0b1f9aeb45b41b089175aeeabd5d95, type: 3}
+    volume: 0.12
+    pitch: 0
+    pitchVariance: 0
+  musicEntries:
+  - type: 0
+    clip: {fileID: 8300000, guid: 5b60ee5f20fbded4fb57a6c08e616af0, type: 3}
+    volume: 0.19
+  - type: 1
+    clip: {fileID: 8300000, guid: a823b48b147b1244cb70636dd7eb6d64, type: 3}
+    volume: 0.201

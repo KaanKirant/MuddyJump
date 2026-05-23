@@ -5,6 +5,7 @@
 public enum SoundType
 {
     // ─── Player ───────────────────────────────────────────────────────────────
+    KickAttempt,        // Player or enemy initiates a kick (regardless of success)
     KickSuccess,        // Player lands a valid kick on the pipe
     KickMiss,           // Player swipes but kick window closes with no contact
     PlayerDamage,       // Pipe hits player (non-lethal)
