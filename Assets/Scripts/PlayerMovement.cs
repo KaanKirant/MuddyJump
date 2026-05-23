@@ -258,6 +258,7 @@ public class PlayerMovement : MonoBehaviour
         CloseKickWindow();
 
         GameManager.instance.AddBonusScore(1);
+        SoundManager.Instance?.PlaySFX(SoundType.KickSuccess);
 
         // Lighter hit-stop on successful kick for responsive feedback (timescale 0.15, 0.03s)
         // This feels crisp without disrupting gameplay flow
@@ -284,6 +285,7 @@ public class PlayerMovement : MonoBehaviour
         _rb.angularVelocity = Vector3.zero;
 
         PlayerStats.Instance.TakeDamage(amount);
+        SoundManager.Instance?.PlaySFX(SoundType.PlayerDamage);
 
         if (PlayerStats.Instance.Health < 1f)
         {
@@ -298,6 +300,7 @@ public class PlayerMovement : MonoBehaviour
     /// <summary>Instant death — bypasses normal invincibility (used by lethal pipes).</summary>
     public void InstantKill()
     {
+        SoundManager.Instance?.PlaySFX(SoundType.PlayerDeath);
         GameManager.instance.EndGame();
     }
 

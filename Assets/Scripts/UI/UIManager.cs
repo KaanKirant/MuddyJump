@@ -170,8 +170,15 @@ public class UIManager : MonoBehaviour
 
     #region Button Handlers
 
-    private void OnRestartClicked() => GameManager.instance?.RestartGame();
-    private void OnMainMenuClicked() => GameManager.instance?.LoadMainMenu();
-
+    private void OnRestartClicked()
+    {
+        SoundManager.Instance?.PlaySFX(SoundType.UIClick);
+        GameManager.instance?.RestartGame();
+    }
+    private void OnMainMenuClicked()
+    {
+        SoundManager.Instance?.PlaySFX(SoundType.UIClick);
+        GameManager.instance?.LoadMainMenu();
+    } 
     #endregion
 }

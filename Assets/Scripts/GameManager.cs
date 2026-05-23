@@ -79,6 +79,8 @@ public class GameManager : MonoBehaviour
 
         SpawnManager.instance.StartSpawning();
         UpdateHUD();
+
+        SoundManager.Instance?.PlayMusic(MusicType.Gameplay);
     }
 
     private void Update()
@@ -126,7 +128,8 @@ public class GameManager : MonoBehaviour
 
         _secondPipeUnlocked = true;
         secondPipe.gameObject.SetActive(true);
-        Debug.Log("[GameManager] Second pipe unlocked.");
+        SoundManager.Instance?.PlaySFX(SoundType.SecondPipeWarning);
+        //Debug.Log("[GameManager] Second pipe unlocked.");
     }
 
     #endregion
@@ -162,6 +165,10 @@ public class GameManager : MonoBehaviour
         if (secondPipe != null) secondPipe.enabled = false;
 
         SaveBestScore();
+
+        SoundManager.Instance?.PlaySFX(SoundType.GameOver);
+        SoundManager.Instance?.StopMusic();
+
         UIManager.Instance?.ShowGameOver();
         Time.timeScale = 0f;
 

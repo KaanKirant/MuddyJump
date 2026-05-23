@@ -10,6 +10,11 @@ public class MainMenuUI : MonoBehaviour
     [Tooltip("Exact name of your gameplay scene as it appears in Build Settings.")]
     [SerializeField] private string gameplaySceneName = "GameplayScene";
 
+    private void Start()
+    {
+        SoundManager.Instance?.PlayMusic(MusicType.MainMenu); 
+    }
+
     public void PlayGame()
     {
         Time.timeScale = 1f;   // Safety reset — in case player came from a paused/game-over state

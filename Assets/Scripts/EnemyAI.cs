@@ -389,6 +389,7 @@ public class EnemyAI : MonoBehaviour
 
         health -= amount;
         ClampHealth();
+        SoundManager.Instance?.PlaySFX(SoundType.EnemyDamage);
 
         if (health < 1f) Die();
     }
@@ -414,6 +415,7 @@ public class EnemyAI : MonoBehaviour
     private void Die()
     {
         _isDead = true;
+        SoundManager.Instance?.PlaySFX(SoundType.EnemyDeath);
         SpawnManager.instance.OnEnemyDied(gameObject);
     }
 

@@ -204,6 +204,7 @@ public class SpawnManager : MonoBehaviour
         if (selected == null || selected.enemyPrefab == null) return;
 
         GameObject enemy = Instantiate(selected.enemyPrefab, point.position, point.rotation);
+        SoundManager.Instance?.PlaySFX(SoundType.EnemySpawn);
         EnemyAI ai = enemy.GetComponent<EnemyAI>();
 
         if (ai != null)
