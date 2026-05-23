@@ -5,20 +5,31 @@ using UnityEngine.UI;
 /// <summary>
 /// Controls a single enemy's decision-making, movement, kick logic, and health.
 ///
-/// Decision flow (triggered by EnemyTriggerArea when pipe enters range):
-///   DecideAction() → rolls kick/jump/hesitate based on difficulty and tunable ranges
-///   TryKick() → snapshots pipe direction, plays animation, starts KickSequence
-///   KickSequence → grants invincibility immediately, resolves pipe impact after kickImpactDelay
+/// Kick timing system:
+///   When DecideAction() chooses to kick, TryKick() calculates exactly how
+///   many seconds until the rotating pipe tip reaches the enemy's position.
+///   The kick animation starts (arrivalTime - kickWindUpDuration) seconds early
+///   so that OnKickWindowOpen fires precisely when the pipe arrives.
 ///
-/// All AI decision probabilities are exposed in the Inspector under "AI Decisions"
-/// so behaviour can be tuned without touching code.
+///   Calculation:
+///     - tipAngle   = XZ angle of pipe tip relative to pipe center
+///     - enemyAngle = XZ angle of enemy relative to pipe center
+///     - angularGap = degrees the tip must travel to reach the enemy (in rotation direction)
+///     - arrivalTime = angularGap / pipe.CurrentSpeed (degrees per second)
+///     - windUpDelay = arrivalTime - kickWindUpDuration
+///
+///   If the pipe arrives before the animation can wind up (windUpDelay < 0),
+///   the kick is skipped and the enemy jumps instead.
+///
+///   OnKickWindowOpen / OnKickWindowClose are animation events — set them on
+///   the kick clips exactly as you did for the player.
 /// </summary>
 [RequireComponent(typeof(Rigidbody))]
 [RequireComponent(typeof(Animator))]
 public class EnemyAI : MonoBehaviour
 {
     // ─── Identity ─────────────────────────────────────────────────────────────
-    [HideInInspector] public bool isBoss = false;   // Set by SpawnManager after instantiation
+    [HideInInspector] public bool isBoss = false;
 
     // ─── Health ───────────────────────────────────────────────────────────────
     [Header("Health")]
@@ -51,34 +62,45 @@ public class EnemyAI : MonoBehaviour
     [Header("Jump")]
     [SerializeField] private float jumpForce = 18f;
 
-    // ─── Kick ─────────────────────────────────────────────────────────────────
+    // ─── Kick Settings ────────────────────────────────────────────────────────
     [Header("Kick Settings")]
     [SerializeField] private float kickRange = 1.2f;
     [SerializeField] private LayerMask pipeLayer;
     [SerializeField] private Transform kickPoint;
 
-    [Tooltip("Seconds after kick animation starts before pipe impact is resolved. " +
-             "Match to the foot-strike frame of your kick animation.")]
-    [SerializeField] private float kickImpactDelay = 0.15f;
+    [Tooltip("Seconds from animation start to OnKickWindowOpen event. " +
+             "Measure this in the Animator — it is the wind-up duration of the kick clip. " +
+             "This value is critical: the system subtracts it from arrival time to know " +
+             "when to start the animation so the window opens exactly when the pipe arrives.")]
+    [SerializeField] private float kickWindUpDuration = 0.2f;
 
-    [Tooltip("Total invincibility window from kick start. Must be >= kickImpactDelay.")]
-    [SerializeField] private float kickInvincibilityDuration = 0.6f;
+    [Tooltip("How long the kick window stays open (seconds). " +
+             "Should match the active frames in your kick animation.")]
+    [SerializeField] private float kickWindowDuration = 0.15f;
+
+    [Tooltip("Invincibility granted from window-open until this many seconds after. " +
+             "Should cover the full kick animation length.")]
+    [SerializeField] private float kickInvincibilityDuration = 0.5f;
+
+    [Tooltip("If the pipe arrives sooner than this, skip the kick and jump instead. " +
+             "Prevents the enemy trying to kick when there is not enough time to wind up.")]
+    [SerializeField] private float minTimeToKick = 0.1f;
 
     // ─── AI Decisions ─────────────────────────────────────────────────────────
     [Header("AI Decisions")]
-    [Tooltip("Kick probability at difficulty 0 (game start). 0 = never kicks, 1 = always kicks.")]
+    [Tooltip("Kick probability at difficulty 0 (game start).")]
     [Range(0f, 1f)]
     [SerializeField] private float kickChanceAtMinDifficulty = 0.3f;
 
-    [Tooltip("Kick probability at difficulty 1 (max). Should be higher than min.")]
+    [Tooltip("Kick probability at difficulty 1 (max).")]
     [Range(0f, 1f)]
     [SerializeField] private float kickChanceAtMaxDifficulty = 0.75f;
 
-    [Tooltip("Hesitate (do nothing) probability at difficulty 0. Gives the player breathing room early game.")]
+    [Tooltip("Hesitate probability at difficulty 0 — gives player breathing room early on.")]
     [Range(0f, 1f)]
     [SerializeField] private float hesitateChanceAtMinDifficulty = 0.3f;
 
-    [Tooltip("Hesitate probability at difficulty 1. Should be lower than min — enemies react faster at high difficulty.")]
+    [Tooltip("Hesitate probability at difficulty 1 — enemies react faster at max difficulty.")]
     [Range(0f, 1f)]
     [SerializeField] private float hesitateChanceAtMaxDifficulty = 0f;
 
@@ -90,8 +112,15 @@ public class EnemyAI : MonoBehaviour
     private Rigidbody _rb;
     private Camera _mainCamera;
 
-    private Vector2 _pendingKickDirection;
+    private Vector2 _committedKickDirection;  // Snapshotted at decision time
+    private bool _kickWindowOpen;
+    private bool _kickLandedThisSwing;
     private bool _isDead;
+
+    private Coroutine _kickWindowRoutine;
+    private Coroutine _invincibilityRoutine;
+
+    private readonly Collider[] _kickHits = new Collider[4];
 
     [SerializeField] private bool isGrounded;
 
@@ -105,7 +134,16 @@ public class EnemyAI : MonoBehaviour
 
     private void Awake()
     {
-        _pipe = FindAnyObjectByType<PipeLogic>();
+        PipeLogic[] allPipes = FindObjectsByType<PipeLogic>(FindObjectsInactive.Include);
+        foreach (PipeLogic p in allPipes)
+        {
+            if (!p.isLethalPipe)
+            {
+                _pipe = p;
+                break;
+            }
+        }
+
         _animator = GetComponent<Animator>();
         _rb = GetComponent<Rigidbody>();
         _mainCamera = Camera.main;
@@ -113,6 +151,14 @@ public class EnemyAI : MonoBehaviour
         InstantiateHeartContainers();
         onHealthChangedCallback += UpdateHeartsHUD;
         UpdateHeartsHUD();
+    }
+
+    private void FixedUpdate()
+    {
+        // Poll kick contact every physics tick while window is open —
+        // same pattern as player for consistent, reliable hit detection
+        if (_kickWindowOpen)
+            CheckKickContact();
     }
 
     private void LateUpdate()
@@ -137,19 +183,16 @@ public class EnemyAI : MonoBehaviour
 
     /// <summary>
     /// Called by EnemyTriggerArea after its reaction delay.
-    /// Rolls kick / jump / hesitate based on current difficulty and Inspector-tuned ranges.
+    /// Rolls kick / jump / hesitate based on difficulty and Inspector-tuned ranges.
     /// </summary>
     public void DecideAction()
     {
         if (_isDead) return;
 
         float difficulty = GameManager.instance != null ? GameManager.instance.DifficultyNormalized : 0f;
-
-        // Lerp both chances across the difficulty range — fully tunable in Inspector
         float kickChance = Mathf.Lerp(kickChanceAtMinDifficulty, kickChanceAtMaxDifficulty, difficulty);
         float hesitateChance = Mathf.Lerp(hesitateChanceAtMinDifficulty, hesitateChanceAtMaxDifficulty, difficulty);
 
-        // Clamp so kick + hesitate never exceed 1 (remaining probability goes to jump)
         kickChance = Mathf.Clamp01(kickChance);
         hesitateChance = Mathf.Clamp01(hesitateChance);
 
@@ -175,81 +218,166 @@ public class EnemyAI : MonoBehaviour
 
     #endregion
 
-    #region Kick
+    #region Kick — Arrival Timing
 
     /// <summary>
-    /// Step 1 — snapshot pipe direction and play animation.
-    /// Pipe contact is deferred to KickSequence.
+    /// Calculates pipe arrival time then schedules the animation so
+    /// OnKickWindowOpen fires exactly when the pipe tip reaches this enemy.
+    /// Falls back to DoJump if there is not enough time to wind up.
     /// </summary>
     private void TryKick()
     {
         if (_pipe == null) return;
+        // Snapshot direction NOW before anything can change it
+        _committedKickDirection = _pipe.rotationDirection ? Vector2.right : Vector2.left;
 
-        _pendingKickDirection = _pipe.rotationDirection ? Vector2.right : Vector2.left;
+        float arrivalTime = CalculatePipeArrivalTime();
 
-        _animator.CrossFade(
-            _pendingKickDirection == Vector2.right ? KickRightHash : KickLeftHash,
-            0.02f
-        );
+        // Not enough time to wind up — jump instead
+        float windUpDelay = arrivalTime - kickWindUpDuration;
+        if (windUpDelay < minTimeToKick)
+        {
+            DoJump();
+            return;
+        }
 
-        StartCoroutine(KickSequence());
+        StartCoroutine(TimedKickSequence(windUpDelay));
     }
 
     /// <summary>
-    /// Step 2 — invincibility granted immediately on kick commitment.
-    /// Pipe impact resolved after kickImpactDelay to match the animation.
+    /// Waits windUpDelay seconds then plays the kick animation.
+    /// The animation's OnKickWindowOpen event opens the hit window,
+    /// which should fire exactly when the pipe arrives.
     /// </summary>
-    private IEnumerator KickSequence()
+    private IEnumerator TimedKickSequence(float windUpDelay)
     {
-        isInvincible = true;
-        isKicking = true;
+        yield return new WaitForSeconds(windUpDelay);
 
-        yield return new WaitForSeconds(kickImpactDelay);
+        if (_isDead) yield break;
 
-        if (!_isDead)
-            ResolveKickImpact();
-
-        float remaining = Mathf.Max(0f, kickInvincibilityDuration - kickImpactDelay);
-        yield return new WaitForSeconds(remaining);
-
-        isInvincible = false;
-        isKicking = false;
+        // Play animation — OnKickWindowOpen event drives the rest
+        _animator.CrossFade(
+            _committedKickDirection == Vector2.right ? KickRightHash : KickLeftHash,
+            0.02f
+        );
     }
 
-    private void ResolveKickImpact()
+    /// <summary>
+    /// Calculates how many seconds until the pipe tip reaches this enemy's
+    /// angular position, travelling in the current rotation direction.
+    ///
+    /// Both positions are projected onto the XZ plane relative to the pipe center.
+    /// Angular gap / rotation speed (degrees/sec) = arrival time in seconds.
+    /// </summary>
+    private float CalculatePipeArrivalTime()
     {
-        if (_pipe == null) return;
+        if (_pipe == null || _pipe.pipeTip == null)
+        {
+            // No tip reference — fall back to a safe fixed estimate
+            return kickWindUpDuration + minTimeToKick;
+        }
+
+        Vector3 pipeCenter = _pipe.transform.position;
+
+        // Project both positions onto XZ plane relative to pipe center
+        Vector3 tipRelative = _pipe.pipeTip.position - pipeCenter; tipRelative.y = 0f;
+        Vector3 enemyRelative = transform.position - pipeCenter; enemyRelative.y = 0f;
+
+        if (tipRelative.sqrMagnitude < 0.001f || enemyRelative.sqrMagnitude < 0.001f)
+            return kickWindUpDuration + minTimeToKick;
+
+        // Angles in degrees on the XZ plane
+        float tipAngle = Mathf.Atan2(tipRelative.z, tipRelative.x) * Mathf.Rad2Deg;
+        float enemyAngle = Mathf.Atan2(enemyRelative.z, enemyRelative.x) * Mathf.Rad2Deg;
+
+        // Angular gap in the pipe's travel direction, normalised to [0, 360)
+        // rotationDirection true = +Y rotation = counterclockwise on XZ when viewed from above
+        float gap;
+        if (_pipe.rotationDirection)
+            gap = enemyAngle - tipAngle;   // CCW: tip chases enemy forward in angle
+        else
+            gap = tipAngle - enemyAngle;   // CW: tip chases enemy backward in angle
+
+        gap = ((gap % 360f) + 360f) % 360f;
+
+        // arrivalTime = angular gap / rotation speed (degrees per second)
+        float speed = Mathf.Max(_pipe.RuntimeSpeed, 1f);
+        return gap / speed;
+    }
+
+    #endregion
+
+    #region Kick Window — Animation Event Driven
+
+    /// <summary>
+    /// Animation event — fires at wind-up completion (same event as on player clips).
+    /// Opens the kick hit window and grants invincibility.
+    /// </summary>
+    public void OnKickWindowOpen()
+    {
+        if (_isDead) return;
+
+        _kickLandedThisSwing = false;
+
+        if (_invincibilityRoutine != null) StopCoroutine(_invincibilityRoutine);
+        _invincibilityRoutine = StartCoroutine(KickInvincibility());
+
+        if (_kickWindowRoutine != null) StopCoroutine(_kickWindowRoutine);
+        _kickWindowRoutine = StartCoroutine(KickWindowRoutine());
+    }
+
+    /// <summary>Animation event — optional early close at follow-through end.</summary>
+    public void OnKickWindowClose() => CloseKickWindow();
+
+    /// <summary>Legacy stub — kept for clip compatibility.</summary>
+    public void OnKickImpact() { }
+
+    private IEnumerator KickWindowRoutine()
+    {
+        isKicking = true;
+        _kickWindowOpen = true;
+
+        yield return new WaitForSeconds(kickWindowDuration);
+
+        CloseKickWindow();
+    }
+
+    private void CloseKickWindow()
+    {
+        _kickWindowOpen = false;
+        isKicking = false;
+
+        if (_kickWindowRoutine != null) { StopCoroutine(_kickWindowRoutine); _kickWindowRoutine = null; }
+    }
+
+    /// <summary>
+    /// Polled every FixedUpdate while the kick window is open.
+    /// Uses the committed direction snapshotted at decision time.
+    /// </summary>
+    private void CheckKickContact()
+    {
+        if (_kickLandedThisSwing || _pipe == null) return;
 
         Vector3 origin = kickPoint != null ? kickPoint.position : transform.position;
-        bool pipeInRange = Physics.CheckSphere(origin, kickRange, pipeLayer);
-        if (!pipeInRange) return;
+        int hitCount = Physics.OverlapSphereNonAlloc(origin, kickRange, _kickHits, pipeLayer);
+        if (hitCount == 0) return;
 
-        // Re-read live direction at impact — pipe may have turned since the decision
-        Vector2 liveDirection = _pipe.rotationDirection ? Vector2.right : Vector2.left;
+        bool landed = _pipe.GetKicked(_committedKickDirection);
+        if (!landed) return;
 
-        if (isBoss)
-        {
-            // Boss temporarily amplifies kick multiplier for a harder hit
-            float original = _pipe.kickSpeedMultiplier;
-            _pipe.kickSpeedMultiplier = original * KickSpeedBonus;
-            _pipe.GetKicked(liveDirection);
-            _pipe.kickSpeedMultiplier = original;
-        }
-        else
-        {
-            _pipe.GetKicked(liveDirection);
-        }
+        _kickLandedThisSwing = true;
+        CloseKickWindow();
 
         GameManager.instance?.TriggerHitStop(0.15f, 0.03f);
-
-        CameraController cam = Camera.main?.GetComponent<CameraController>();
-        cam?.TriggerShake(0.06f, 0.15f);
+        Camera.main?.GetComponent<CameraController>()?.TriggerShake(0.06f, 0.15f);
     }
 
-    // Legacy animation event stubs — KickSequence drives timing
-    public void OnKickImpact() { }
-    public void OnKickWindowOpen() { }
-    public void OnKickWindowClose() { }
+    private IEnumerator KickInvincibility()
+    {
+        isInvincible = true;
+        yield return new WaitForSeconds(kickInvincibilityDuration);
+        isInvincible = false;
+    }
 
     #endregion
 

@@ -83,7 +83,7 @@ SphereCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Radius: 3
+  m_Radius: 4
   m_Center: {x: 0, y: 0, z: 0}
 --- !u!114 &2907262783405829170
 MonoBehaviour:
@@ -183,14 +183,20 @@ MonoBehaviour:
   heartContainerPrefab: {fileID: 1000013667988280, guid: 677e3f20f0ab76a45bd59d5b73b0b446, type: 3}
   isKicking: 0
   isInvincible: 0
-  jumpForce: 16
+  jumpForce: 18
   kickRange: 2.5
   pipeLayer:
     serializedVersion: 2
     m_Bits: 8
   kickPoint: {fileID: 9137019580381477824}
-  kickImpactDelay: 0.15
+  kickWindUpDuration: 0.06
+  kickWindowDuration: 0.07
   kickInvincibilityDuration: 0.4
+  minTimeToKick: 0
+  kickChanceAtMinDifficulty: 0.3
+  kickChanceAtMaxDifficulty: 0.75
+  hesitateChanceAtMinDifficulty: 0.3
+  hesitateChanceAtMaxDifficulty: 0
   isGrounded: 0
 --- !u!95 &3606532536660931688
 Animator:

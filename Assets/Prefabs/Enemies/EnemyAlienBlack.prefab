@@ -63,9 +63,9 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
+  - {fileID: 4459672634235169525}
   - {fileID: 305606283836889799}
   - {fileID: 7888731212834462219}
-  - {fileID: 4459672634235169525}
   - {fileID: 8705354548987117297}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
@@ -122,8 +122,14 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 8
   kickPoint: {fileID: 4459672634235169525}
-  kickImpactDelay: 0.15
+  kickWindUpDuration: 0.06
+  kickWindowDuration: 0.07
   kickInvincibilityDuration: 0.4
+  minTimeToKick: 0
+  kickChanceAtMinDifficulty: 0.3
+  kickChanceAtMaxDifficulty: 0.75
+  hesitateChanceAtMinDifficulty: 0.3
+  hesitateChanceAtMaxDifficulty: 0
   isGrounded: 0
 --- !u!95 &6724199473557787587
 Animator:
@@ -199,8 +205,8 @@ SphereCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Radius: 3
-  m_Center: {x: 0, y: 0, z: 0}
+  m_Radius: 4
+  m_Center: {x: 0, y: 0.6491673, z: 0}
 --- !u!114 &2579436280705196369
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -233,6 +239,22 @@ PrefabInstance:
     - target: {fileID: 93242624071384113, guid: 3683d1890a89fef41a3dac95e8d88535, type: 3}
       propertyPath: m_LocalScale.z
       value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 93242624071384113, guid: 3683d1890a89fef41a3dac95e8d88535, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.98298347
+      objectReference: {fileID: 0}
+    - target: {fileID: 93242624071384113, guid: 3683d1890a89fef41a3dac95e8d88535, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0.18369405
+      objectReference: {fileID: 0}
+    - target: {fileID: 93242624071384113, guid: 3683d1890a89fef41a3dac95e8d88535, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: 93242624071384113, guid: 3683d1890a89fef41a3dac95e8d88535, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: -0
       objectReference: {fileID: 0}
     - target: {fileID: 1257403435338355676, guid: 3683d1890a89fef41a3dac95e8d88535, type: 3}
       propertyPath: m_PresetInfoIsWorld

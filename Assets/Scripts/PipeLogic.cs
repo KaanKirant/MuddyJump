@@ -42,11 +42,16 @@ public class PipeLogic : MonoBehaviour
     [Tooltip("Absolute maximum rotation speed regardless of kicks.")]
     [SerializeField] private float maxSpeed = 300f;
 
+    public float RuntimeSpeed => _runtimeSpeed;
+
     // ─── Pipe Type ────────────────────────────────────────────────────────────
     [Header("Pipe Type")]
     [Tooltip("If true this pipe instant-kills on contact. No kicking possible. " +
              "Used for the elevated second pipe.")]
     public bool isLethalPipe = false;
+
+    [Tooltip("Empty child transform at the tip of the pipe arm. Used by EnemyAI for arrival timing.")]
+    public Transform pipeTip;
 
     // ─── Cooldowns ────────────────────────────────────────────────────────────
     [Header("Cooldowns")]
