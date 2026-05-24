@@ -39,6 +39,14 @@ public class UIManager : MonoBehaviour
     [Header("Pause")]
     [SerializeField] private GameObject pauseMenu;
 
+    [Tooltip("Settings button inside the pause menu. Opens the settings panel.")]
+    [SerializeField] private Button pauseSettingsButton;
+
+    // ─── Settings ─────────────────────────────────────────────────────────────
+    [Header("Settings")]
+    [Tooltip("The SettingsPanel component in this canvas. Used by both pause and game over contexts.")]
+    [SerializeField] private SettingsPanel settingsPanel;
+
     // ─── Private ──────────────────────────────────────────────────────────────
     private CanvasGroup _gameOverCanvasGroup;
     private bool _isPaused;
@@ -164,6 +172,11 @@ public class UIManager : MonoBehaviour
         if (pauseMenu != null) pauseMenu.SetActive(false);
     }
 
+    public void OpenSettings()
+    {
+        settingsPanel?.Show();
+    }
+
     public bool IsPaused() => _isPaused;
 
     #endregion
@@ -179,6 +192,8 @@ public class UIManager : MonoBehaviour
     {
         SoundManager.Instance?.PlaySFX(SoundType.UIClick);
         GameManager.instance?.LoadMainMenu();
-    } 
+    }
+
+
     #endregion
 }

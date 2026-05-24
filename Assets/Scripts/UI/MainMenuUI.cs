@@ -10,6 +10,9 @@ public class MainMenuUI : MonoBehaviour
     [Tooltip("Exact name of your gameplay scene as it appears in Build Settings.")]
     [SerializeField] private string gameplaySceneName = "GameplayScene";
 
+    [Tooltip("The SettingsPanel component in this canvas. Starts hidden.")]
+    [SerializeField] private SettingsPanel settingsPanel;
+
     private void Start()
     {
         SoundManager.Instance?.PlayMusic(MusicType.MainMenu); 
@@ -19,6 +22,11 @@ public class MainMenuUI : MonoBehaviour
     {
         Time.timeScale = 1f;   // Safety reset — in case player came from a paused/game-over state
         SceneManager.LoadScene(gameplaySceneName);
+    }
+
+    public void OpenSettings()
+    {
+        settingsPanel?.Show();
     }
 
     public void QuitGame()
