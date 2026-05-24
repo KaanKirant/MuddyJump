@@ -3575,7 +3575,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MainMenuUI
   gameplaySceneName: GameplayScene
-  settingsPanel: {fileID: 0}
+  settingsPanel: {fileID: 1032920988}
 --- !u!1 &1863139266
 GameObject:
   m_ObjectHideFlags: 0
@@ -3781,7 +3781,7 @@ MonoBehaviour:
       m_Calls:
       - m_Target: {fileID: 1782802437}
         m_TargetAssemblyTypeName: MainMenuUI, Assembly-CSharp
-        m_MethodName: PlayGame
+        m_MethodName: OpenSettings
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
