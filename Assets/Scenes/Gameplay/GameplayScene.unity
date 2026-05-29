@@ -8747,6 +8747,12 @@ MonoBehaviour:
   minSpawnInterval: 2
   baseEnemyHealth: 3
   healthScaleBonus: 4
+  healthItemPrefab: {fileID: 7694334794183268881, guid: 3653d9e063571d74ab43cab88fd97ef8, type: 3}
+  shieldItemPrefab: {fileID: 577764685721152717, guid: 105c24ee8f7960b47b8718836862025d, type: 3}
+  itemSpawnInterval: 12
+  itemSpawnChance: 0.4
+  healthItemProbability: 0.7
+  maxItemsAlive: 2
   occupiedRadius: 2.5
 --- !u!4 &1252781232
 Transform:

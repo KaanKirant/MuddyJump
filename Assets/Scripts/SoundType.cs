@@ -26,6 +26,10 @@ public enum SoundType
 
     // ─── UI ───────────────────────────────────────────────────────────────────
     UIClick,            // Any button press
+
+    // Consumables
+    ConsumablePickup,
+
 }
 
 /// <summary>
