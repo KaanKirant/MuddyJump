@@ -27,7 +27,6 @@ public class PlayerMovement : MonoBehaviour
     [Tooltip("Grace window after a hit — prevents chain damage.")]
     [SerializeField] private float hitInvincibilityDuration = 2f;
 
-
     // ─── Physics ──────────────────────────────────────────────────────────────
     [Header("Physics Settings")]
     [SerializeField] private float jumpForce = 18f;
@@ -55,7 +54,6 @@ public class PlayerMovement : MonoBehaviour
     // ─── Public State ─────────────────────────────────────────────────────────
     public bool IsKicking { get; private set; }
     public bool IsInvincible { get; private set; }
-    public bool IsShieldActive { get; private set; }
 
     // ─── Private ──────────────────────────────────────────────────────────────
     private Rigidbody _rb;
@@ -304,11 +302,6 @@ public class PlayerMovement : MonoBehaviour
     {
         SoundManager.Instance?.PlaySFX(SoundType.PlayerDeath);
         GameManager.instance.EndGame();
-    }
-
-    public void ActivateShield()
-    {
-        IsShieldActive = true;
     }
 
     // ── Regen — DORMANT ───────────────────────────────────────────────────────
