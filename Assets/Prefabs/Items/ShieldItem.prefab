@@ -10,13 +10,14 @@ GameObject:
   m_Component:
   - component: {fileID: 2172824039957236863}
   - component: {fileID: 29408048585795952}
+  - component: {fileID: 5028374321834276503}
   m_Layer: 0
   m_Name: ShieldItem
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &2172824039957236863
 Transform:
   m_ObjectHideFlags: 0
@@ -52,10 +53,24 @@ CapsuleCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
-  m_Radius: 0.9796413
-  m_Height: 2.5381274
+  m_Radius: 0.58
+  m_Height: 1.51
   m_Direction: 1
-  m_Center: {x: -0.000000059604645, y: -0.060423553, z: 0.08848737}
+  m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &5028374321834276503
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 577764685721152717}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3a82c3d53c43ed04d914a29aaf88b49e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ShieldConsumable
+  pickupEffectPrefab: {fileID: 0}
+  lifetime: 0
 --- !u!1001 &6181295108141853404
 PrefabInstance:
   m_ObjectHideFlags: 0

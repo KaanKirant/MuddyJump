@@ -10,6 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 5032463423231009295}
   - component: {fileID: 8693867351252710488}
+  - component: {fileID: 724959624543191612}
   m_Layer: 0
   m_Name: HeartItem
   m_TagString: Untagged
@@ -26,9 +27,9 @@ Transform:
   m_GameObject: {fileID: 7694334794183268881}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.48, y: 1.41, z: -1.61}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 1
+  m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 7101231783603417729}
   m_Father: {fileID: 0}
@@ -52,10 +53,25 @@ CapsuleCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
-  m_Radius: 0.12355143
-  m_Height: 0.4059322
+  m_Radius: 0.65
+  m_Height: 1.3768743
   m_Direction: 1
-  m_Center: {x: 0, y: 0.1616528, z: 0}
+  m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &724959624543191612
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7694334794183268881}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2ad8e3c86400e0d4a9c0cb7370543227, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HealthConsumable
+  pickupEffectPrefab: {fileID: 0}
+  lifetime: 0
+  healthRestore: 1
 --- !u!1001 &7018644446125198421
 PrefabInstance:
   m_ObjectHideFlags: 0

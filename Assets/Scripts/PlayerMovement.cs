@@ -54,6 +54,7 @@ public class PlayerMovement : MonoBehaviour
     // ─── Public State ─────────────────────────────────────────────────────────
     public bool IsKicking { get; private set; }
     public bool IsInvincible { get; private set; }
+    public bool HasShield { get; private set; }
 
     // ─── Private ──────────────────────────────────────────────────────────────
     private Rigidbody _rb;
@@ -280,6 +281,14 @@ public class PlayerMovement : MonoBehaviour
     {
         if (IsInvincible) return;
 
+        // Shield blocks one hit (protects from one-hit-kill)
+        if (HasShield)
+        {
+            BreakShield();
+            SoundManager.Instance?.PlaySFX(SoundType.PlayerDamage);
+            return;
+        }
+
         // Kill lateral drift on hit
         Vector3 v = _rb.linearVelocity; v.x = 0f; v.z = 0f; _rb.linearVelocity = v;
         _rb.angularVelocity = Vector3.zero;
@@ -300,6 +309,14 @@ public class PlayerMovement : MonoBehaviour
     /// <summary>Instant death — bypasses normal invincibility (used by lethal pipes).</summary>
     public void InstantKill()
     {
+        // Shield protects from instant kill (breaks instead of dying)
+        if (HasShield)
+        {
+            BreakShield();
+            SoundManager.Instance?.PlaySFX(SoundType.PlayerDamage);
+            return;
+        }
+
         SoundManager.Instance?.PlaySFX(SoundType.PlayerDeath);
         GameManager.instance.EndGame();
     }
@@ -384,6 +401,12 @@ public class PlayerMovement : MonoBehaviour
 
     public void SetPipeLogic(PipeLogic targetPipe) => _pipe = targetPipe;
     public void SetKickState(bool value) => IsKicking = value;
+
+    /// <summary>Grant the player a protective shield that blocks one hit.</summary>
+    public void GrantShield() => HasShield = true;
+
+    /// <summary>Break the player's shield without applying damage.</summary>
+    public void BreakShield() => HasShield = false;
 
     #endregion
 
