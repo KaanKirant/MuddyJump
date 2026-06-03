@@ -81,6 +81,7 @@ public class GameManager : MonoBehaviour
             secondPipe.gameObject.SetActive(false);
 
         SpawnManager.instance.StartSpawning();
+        ConsumableSpawnManager.instance?.StartSpawning();
         UpdateHUD();
 
         SoundManager.Instance?.PlayMusic(MusicType.Gameplay);
@@ -163,6 +164,7 @@ public class GameManager : MonoBehaviour
         IsGameActive = false;
 
         SpawnManager.instance.StopSpawning();
+        ConsumableSpawnManager.instance?.StopSpawning();
 
         if (mainPipe != null) mainPipe.enabled = false;
         if (secondPipe != null) secondPipe.enabled = false;
