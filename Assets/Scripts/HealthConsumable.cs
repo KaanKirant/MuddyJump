@@ -16,7 +16,7 @@ public class HealthConsumable : ConsumableItem
         PlayerStats stats = PlayerStats.Instance;
         if (stats == null) return false;
 
-        return stats.Health < stats.MaxHealth;
+        return stats.Health <= stats.MaxHealth;
     }
 
     /// <summary>
