@@ -115,7 +115,6 @@ public class PipeLogic : MonoBehaviour
             {
                 PlayHitReaction(collision.gameObject);
                 player.TakeDamage(1);
-                SoundManager.Instance?.PlaySFX(SoundType.PipeHitPlayer);
                 ResolveHit();
             }
 
@@ -141,7 +140,6 @@ public class PipeLogic : MonoBehaviour
             {
                 PlayHitReaction(collision.gameObject);
                 enemy.TakeDamage(1);
-                SoundManager.Instance?.PlaySFX(SoundType.PipeHitEnemy);
                 ResolveHit();
             }
 
