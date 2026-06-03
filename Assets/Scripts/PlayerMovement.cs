@@ -60,6 +60,7 @@ public class PlayerMovement : MonoBehaviour
     private Rigidbody _rb;
     private Animator _animator;
     private PipeLogic _pipe;
+    private GameObject _shieldEffect;
 
     private Vector2 _currentKickDirection;
     private float _lastJumpTime;
@@ -91,6 +92,8 @@ public class PlayerMovement : MonoBehaviour
                         | RigidbodyConstraints.FreezePositionZ;
 
         _pipe = FindAnyObjectByType<PipeLogic>();
+
+        _shieldEffect = transform.Find("ShieldEffect")?.gameObject;
     }
 
     private void OnEnable()
@@ -403,10 +406,21 @@ public class PlayerMovement : MonoBehaviour
     public void SetKickState(bool value) => IsKicking = value;
 
     /// <summary>Grant the player a protective shield that blocks one hit.</summary>
-    public void GrantShield() => HasShield = true;
+    public void GrantShield() 
+    {
+        HasShield = true;
+
+        if(_shieldEffect != null)
+            _shieldEffect.SetActive(true);
+    }
 
     /// <summary>Break the player's shield without applying damage.</summary>
-    public void BreakShield() => HasShield = false;
+    public void BreakShield() 
+    { 
+        HasShield = false;
+        if(_shieldEffect != null)
+            _shieldEffect.SetActive(false);
+    }
 
     #endregion
 
