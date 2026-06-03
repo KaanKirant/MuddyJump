@@ -43,6 +43,9 @@ public abstract class ConsumableItem : MonoBehaviour
         if (pickupEffectPrefab != null)
             Instantiate(pickupEffectPrefab, transform.position, Quaternion.identity);
 
+        // Notify spawn manager that this consumable was collected
+        ConsumableSpawnManager.instance?.OnConsumableCollected();
+
         Destroy(gameObject);
     }
 
