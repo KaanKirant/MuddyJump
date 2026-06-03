@@ -12,8 +12,6 @@ public enum SoundType
     PlayerDeath,        // Player dies — lethal pipe or last heart
 
     // ─── Pipe ─────────────────────────────────────────────────────────────────
-    PipeHitPlayer,      // Pipe strikes the player
-    PipeHitEnemy,       // Pipe strikes an enemy
     SecondPipeWarning,  // Second pipe activates — alert the player
 
     // ─── Enemy ────────────────────────────────────────────────────────────────
@@ -27,8 +25,9 @@ public enum SoundType
     // ─── UI ───────────────────────────────────────────────────────────────────
     UIClick,            // Any button press
 
-    // Consumables
-    ConsumablePickup,
+    // ─── Consumables ─────────────────────────────────────────────────────────
+    ConsumablePickup,   // Player collects a consumable item
+    ConsumableSpawn,    // A new consumable spawns
 
 }
 
