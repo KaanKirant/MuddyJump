@@ -46,6 +46,15 @@ public class PlayerMovement : MonoBehaviour
     [SerializeField] private float kickWindowDuration = 0.2f;
     [SerializeField] private float kickInvincibilityDuration = 0.4f;
 
+    // ─── Shield ───────────────────────────────────────────────────────────────
+    [Header("Shield")]
+    [Tooltip("Invincibility granted after shield breaks — prevents immediate chain damage.")]
+    [SerializeField] private float shieldBreakInvincibilityDuration = 1.5f;
+
+    [Tooltip("Optional child GameObject to show/hide as the shield visual. " +
+             "Assign in Inspector — leave null if handled elsewhere.")]
+    [SerializeField] private GameObject shieldVisual;
+
     // ─── Debug ────────────────────────────────────────────────────────────────
     [Header("Debug")]
     [SerializeField] private bool isGrounded;
@@ -284,11 +293,12 @@ public class PlayerMovement : MonoBehaviour
     {
         if (IsInvincible) return;
 
-        // Shield blocks one hit (protects from one-hit-kill)
         if (HasShield)
         {
             BreakShield();
-            SoundManager.Instance?.PlaySFX(SoundType.PlayerDamage);
+            SoundManager.Instance?.PlaySFX(SoundType.ShieldBreak);
+            Camera.main?.GetComponent<CameraController>()?.TriggerShake(0.1f, 0.25f);
+            GameManager.instance?.TriggerHitStop(0.15f, 0.05f);
             return;
         }
 
@@ -379,6 +389,13 @@ public class PlayerMovement : MonoBehaviour
         IsInvincible = false;
     }
 
+    private IEnumerator ShieldBreakInvincibility()
+    {
+        IsInvincible = true;
+        yield return new WaitForSeconds(shieldBreakInvincibilityDuration);
+        IsInvincible = false;
+    }
+
     #endregion
 
     #region Ground Detection
@@ -406,20 +423,25 @@ public class PlayerMovement : MonoBehaviour
     public void SetKickState(bool value) => IsKicking = value;
 
     /// <summary>Grant the player a protective shield that blocks one hit.</summary>
-    public void GrantShield() 
+    public void GrantShield()
     {
         HasShield = true;
-
-        if(_shieldEffect != null)
-            _shieldEffect.SetActive(true);
+        if (shieldVisual != null) shieldVisual.SetActive(true);
     }
 
-    /// <summary>Break the player's shield without applying damage.</summary>
-    public void BreakShield() 
-    { 
+    /// <summary>
+    /// Break the player's shield without applying damage.
+    /// Grants a brief invincibility window so back-to-back hits can't
+    /// immediately drain health after the shield pops.
+    /// </summary>
+    public void BreakShield()
+    {
         HasShield = false;
-        if(_shieldEffect != null)
-            _shieldEffect.SetActive(false);
+        if (shieldVisual != null) shieldVisual.SetActive(false);
+
+        // Grant grace period — same pattern as HitInvincibility
+        if (_invincibilityRoutine != null) StopCoroutine(_invincibilityRoutine);
+        _invincibilityRoutine = StartCoroutine(ShieldBreakInvincibility());
     }
 
     #endregion

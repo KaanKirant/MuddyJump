@@ -1252,9 +1252,9 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 1d9966a2c550d264eb7e1165c13c9665, type: 2}
   spawnPoints:
   - {fileID: 1312094828}
-  spawnInterval: 8
+  spawnInterval: 20
   spawnHeightOffset: 4
-  consumableLifetime: 15
+  consumableLifetime: 7
 --- !u!4 &276180395
 Transform:
   m_ObjectHideFlags: 0
@@ -16186,6 +16186,10 @@ PrefabInstance:
       propertyPath: fallGravity
       value: 10
       objectReference: {fileID: 0}
+    - target: {fileID: 4627730203898958434, guid: 2691c09bf36b3cd4787624946ce6a986, type: 3}
+      propertyPath: shieldVisual
+      value: 
+      objectReference: {fileID: 2143474785}
     - target: {fileID: 4627730203898958434, guid: 2691c09bf36b3cd4787624946ce6a986, type: 3}
       propertyPath: actionCooldown
       value: 0.2

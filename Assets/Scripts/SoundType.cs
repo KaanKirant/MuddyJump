@@ -29,6 +29,9 @@ public enum SoundType
     ConsumablePickup,   // Player collects a consumable item
     ConsumableSpawn,    // A new consumable spawns
 
+    // ─── Shield ───────────────────────────────────────────────────────────────
+    ShieldBreak,        // Player's shield is broken by a hit
+
 }
 
 /// <summary>
