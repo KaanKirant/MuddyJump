@@ -41,10 +41,13 @@ public class CameraController : MonoBehaviour
     private Coroutine _shakeRoutine;
 
     // ─── Unity Lifecycle ──────────────────────────────────────────────────────
-
     private void LateUpdate()
     {
-        if (player == null) return;
+        if (player == null)
+        {
+            Debug.LogWarning("[CameraController] player is null");
+            return;
+        }
 
         // Base position: fixed offset from player, no smoothing or deadzone.
         // _shakeOffset is added on top while a shake coroutine is running.
