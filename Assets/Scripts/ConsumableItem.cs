@@ -1,39 +1,46 @@
 using UnityEngine;
 
 /// <summary>
-/// Abstract base class for all consumable pickups.
+/// Abstract base class for all world-space consumable pickups.
 ///
-/// Attach a concrete subclass (HealthConsumable, ShieldConsumable) to a
-/// GameObject with a trigger Collider. When the player walks into it,
-/// Use() is called and the pickup destroys itself.
+/// Subclasses implement CanUse() (optional gate) and Use() (the effect).
+/// The base class owns the trigger detection, sound, VFX, and self-destruction
+/// so subclasses stay minimal and focused on their single responsibility.
 ///
-/// Inspector setup:
-///   - Add a trigger Collider (e.g. SphereCollider, Is Trigger = true)
-///   - Tag the GameObject "Consumable" or use a dedicated layer
-///   - Assign an optional pickup effect prefab for spawn-on-collect VFX
+/// Open/Closed Principle: add new consumable types by subclassing — no changes
+/// to this file or any other system are required.
+///
+/// Inspector setup (on the prefab root):
+///   - Add a trigger Collider (SphereCollider recommended, Is Trigger = true)
+///   - Assign pickupEffectPrefab for a spawn-on-collect VFX (optional)
+///   - Set lifetime > 0 to auto-destroy the item if not collected (0 = never)
 /// </summary>
 public abstract class ConsumableItem : MonoBehaviour
 {
+    // ─── Inspector ────────────────────────────────────────────────────────────
     [Header("Pickup Settings")]
-    [Tooltip("Visual effect spawned at pickup position when collected. Optional.")]
+    [Tooltip("Particle/VFX prefab instantiated at the collection point. Optional.")]
     [SerializeField] private GameObject pickupEffectPrefab;
 
-    [Tooltip("Seconds before the item destroys itself if not collected. 0 = never expires.")]
+    [Tooltip("Seconds before the item self-destructs if not collected. 0 = never expires.")]
     [SerializeField] private float lifetime = 0f;
+
+    // ─── Unity Lifecycle ──────────────────────────────────────────────────────
 
     private void Start()
     {
+        // Schedule auto-destruction only when a non-zero lifetime is configured.
         if (lifetime > 0f)
             Destroy(gameObject, lifetime);
     }
 
     private void OnTriggerEnter(Collider other)
     {
-        // Only the player can pick up consumables
+        // Only the player can collect consumables.
         PlayerMovement player = other.GetComponentInParent<PlayerMovement>();
         if (player == null) return;
 
-        // Let the subclass decide whether it can be used right now
+        // Subclass gate — e.g. HealthConsumable blocks pickup at full health.
         if (!CanUse(player)) return;
 
         Use(player);
@@ -43,18 +50,24 @@ public abstract class ConsumableItem : MonoBehaviour
         if (pickupEffectPrefab != null)
             Instantiate(pickupEffectPrefab, transform.position, Quaternion.identity);
 
-        // Notify spawn manager that this consumable was collected
+        // Notify the spawn manager so it can schedule the next consumable immediately.
         ConsumableSpawnManager.instance?.OnConsumableCollected();
 
         Destroy(gameObject);
     }
 
+    // ─── Subclass Contract ────────────────────────────────────────────────────
+
     /// <summary>
-    /// Returns true if this consumable can currently be used by the player.
-    /// Override to add conditions (e.g. health must be below max for a heal).
+    /// Override to add a pickup condition.
+    /// The item is silently skipped (stays in the world) when this returns false.
+    /// Default: always usable.
     /// </summary>
     protected virtual bool CanUse(PlayerMovement player) => true;
 
-    /// <summary>Apply this consumable's effect to the player.</summary>
+    /// <summary>
+    /// Apply this consumable's effect to the player.
+    /// Called only when CanUse() returns true.
+    /// </summary>
     protected abstract void Use(PlayerMovement player);
 }
