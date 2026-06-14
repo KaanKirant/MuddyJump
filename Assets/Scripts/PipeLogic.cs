@@ -6,51 +6,57 @@ using UnityEngine;
 /// Rotates continuously and reacts to kicks and hits.
 ///
 /// Speed model — two separate values:
-///   BaseSpeed      set by GameManager every frame as the difficulty floor.
-///   _runtimeSpeed  the live rotation speed, modified by kicks (+) and hits (-).
-///                  Decays back toward BaseSpeed over time so the pipe
-///                  never stays artificially fast or slow forever.
+///   BaseSpeed     — set by GameManager every frame as the difficulty floor.
+///   _runtimeSpeed — the live rotation speed, modified by kicks (+) and hits (−).
+///                   Decays back toward BaseSpeed over time so the pipe
+///                   never stays artificially fast or slow forever.
 ///
-/// This separation means kicks and hits actually have a lasting effect
-/// instead of being overwritten on the next GameManager Update tick.
+/// This separation means kicks and hits have a lasting effect instead of being
+/// silently overwritten on the next GameManager Update tick.
 ///
 /// Direction convention: rotationDirection = true → clockwise (+Y axis).
+///
+/// Cross-pipe protection:
+///   _recentlyHitTargets is a static HashSet shared across all PipeLogic
+///   instances, preventing two pipes from double-hitting the same target in
+///   the same cooldown window. It is cleared in OnDestroy to avoid leaking
+///   stale instance IDs across scene reloads.
 /// </summary>
 public class PipeLogic : MonoBehaviour
 {
     // ─── Speed ────────────────────────────────────────────────────────────────
     [Header("Speed")]
-    [Tooltip("Set by GameManager each frame as the difficulty floor. " +
-             "Do not key-frame or set this directly — use GameManager pipe speed settings.")]
+    [Tooltip("Difficulty floor written by GameManager every frame. " +
+             "Do not set this directly — use GameManager pipe speed settings.")]
     public float BaseSpeed = 60f;
 
-    [Tooltip("How strongly each successful kick multiplies the runtime speed. " +
-             "1.4 = 40% faster per kick.")]
+    [Tooltip("Speed multiplier per successful kick. 1.4 = 40% faster per kick.")]
     public float kickSpeedMultiplier = 1.4f;
 
-    [Tooltip("How strongly each hit divides the runtime speed. " +
-             "1.3 = 30% slower per hit.")]
+    [Tooltip("Speed divisor per hit. 1.3 = 30% slower per hit.")]
     public float hitSpeedDivisor = 1.3f;
 
-    [Tooltip("How fast runtime speed decays back toward BaseSpeed (units per second). " +
+    [Tooltip("Rate at which _runtimeSpeed decays back to BaseSpeed (units/second). " +
              "Higher = snappier recovery. 0 = no decay.")]
     public float speedDecayRate = 8f;
 
     [Header("Speed Clamp")]
     [Tooltip("Absolute minimum rotation speed regardless of hits.")]
     [SerializeField] private float minSpeed = 30f;
+
     [Tooltip("Absolute maximum rotation speed regardless of kicks.")]
     [SerializeField] private float maxSpeed = 300f;
 
+    /// <summary>Live rotation speed in degrees per second. Modified by kicks and hits.</summary>
     public float RuntimeSpeed => _runtimeSpeed;
 
     // ─── Pipe Type ────────────────────────────────────────────────────────────
     [Header("Pipe Type")]
-    [Tooltip("If true this pipe instant-kills on contact. No kicking possible. " +
+    [Tooltip("If true, contact instant-kills on contact. No kick interaction. " +
              "Used for the elevated second pipe.")]
     public bool isLethalPipe = false;
 
-    [Tooltip("Empty child transform at the tip of the pipe arm. Used by EnemyAI for arrival timing.")]
+    [Tooltip("Child transform at the tip of the pipe arm. Used by EnemyAI for arrival-time calculation.")]
     public Transform pipeTip;
 
     // ─── Cooldowns ────────────────────────────────────────────────────────────
@@ -62,33 +68,47 @@ public class PipeLogic : MonoBehaviour
     public float kickCooldown = 0.3f;
 
     // ─── State ────────────────────────────────────────────────────────────────
-    /// <summary>true = clockwise (+Y). Read by EnemyAI and PlayerMovement to decide kick direction.</summary>
+    /// <summary>
+    /// Current rotation direction. true = clockwise (+Y).
+    /// Read by EnemyAI and PlayerMovement to determine the valid kick direction.
+    /// </summary>
     public bool rotationDirection = true;
 
     // ─── Private ──────────────────────────────────────────────────────────────
-    private float _runtimeSpeed;   // Live speed — modified by kicks and hits, decays to BaseSpeed
+    /// <summary>Live speed — modified by kicks and hits, decays toward BaseSpeed.</summary>
+    private float _runtimeSpeed;
 
     private bool _kickOnCooldown;
     private bool _hitOnCooldown;
 
-    // Cross-pipe hit protection — shared across all PipeLogic instances.
-    // Prevents two pipes from hitting the same target in the same window.
+    /// <summary>
+    /// Shared across all PipeLogic instances to prevent double-hits when two
+    /// pipes overlap the same target in the same cooldown window.
+    /// Cleared on pipe destruction to prevent stale IDs crossing scene reloads.
+    /// </summary>
     private static readonly HashSet<int> _recentlyHitTargets = new HashSet<int>();
 
-    #region Unity Lifecycle
+    // ─── Unity Lifecycle ──────────────────────────────────────────────────────
 
     private void Awake()
     {
         _runtimeSpeed = BaseSpeed;
     }
 
+    private void OnDestroy()
+    {
+        // Static sets persist across scene reloads in the Editor.
+        // Clear when the owning pipe is destroyed so stale IDs don't ghost.
+        _recentlyHitTargets.Clear();
+    }
+
     private void Update()
     {
-        // Decay runtime speed back toward BaseSpeed — kicks/hits have lasting but not permanent effect
+        // Decay _runtimeSpeed toward BaseSpeed — kicks/hits have lasting but not permanent effect.
         if (speedDecayRate > 0f)
             _runtimeSpeed = Mathf.MoveTowards(_runtimeSpeed, BaseSpeed, speedDecayRate * Time.deltaTime);
 
-        // Clamp in case BaseSpeed itself changed (GameManager ramps it every frame)
+        // Re-clamp every frame in case BaseSpeed was raised by GameManager.
         _runtimeSpeed = Mathf.Clamp(_runtimeSpeed, minSpeed, maxSpeed);
 
         float dir = rotationDirection ? 1f : -1f;
@@ -115,13 +135,12 @@ public class PipeLogic : MonoBehaviour
             {
                 PlayHitReaction(collision.gameObject);
                 player.TakeDamage(1);
+                SoundManager.Instance?.PlaySFX(SoundType.PipeHitPlayer);
                 ResolveHit();
             }
 
-            CameraController cam = Camera.main?.GetComponent<CameraController>();
-            cam?.TriggerShake(0.08f, 0.2f);
+            Camera.main?.GetComponent<CameraController>()?.TriggerShake(0.08f, 0.2f);
             GameManager.instance?.TriggerHitStop(0.1f, 0.04f);
-
             StartCoroutine(LockTarget(id));
         }
         else if (collision.gameObject.CompareTag("Enemy"))
@@ -140,21 +159,22 @@ public class PipeLogic : MonoBehaviour
             {
                 PlayHitReaction(collision.gameObject);
                 enemy.TakeDamage(1);
+                SoundManager.Instance?.PlaySFX(SoundType.PipeHitEnemy);
                 ResolveHit();
             }
 
-            CameraController cam = Camera.main?.GetComponent<CameraController>();
-            cam?.TriggerShake(0.08f, 0.2f);
+            Camera.main?.GetComponent<CameraController>()?.TriggerShake(0.08f, 0.2f);
             GameManager.instance?.TriggerHitStop(0.1f, 0.04f);
-
             StartCoroutine(LockTarget(id));
         }
     }
 
-    #endregion
+    // ─── Hit / Kick Resolution ────────────────────────────────────────────────
 
-    #region Hit / Kick Resolution
-
+    /// <summary>
+    /// Plays the appropriate hit reaction animation on the target.
+    /// Searches parent first (collider is often a child), then children.
+    /// </summary>
     private void PlayHitReaction(GameObject go)
     {
         Animator anim = go.GetComponentInParent<Animator>()
@@ -164,7 +184,7 @@ public class PipeLogic : MonoBehaviour
 
     /// <summary>
     /// Called when the pipe successfully hits a target.
-    /// Slows the pipe down and reverses direction — reward for the player surviving.
+    /// Reverses direction and slows the pipe — reward for surviving a hit.
     /// </summary>
     private void ResolveHit()
     {
@@ -174,10 +194,10 @@ public class PipeLogic : MonoBehaviour
     }
 
     /// <summary>
-    /// Called by PlayerMovement.CheckKickContact() and EnemyAI.ResolveKickImpact().
+    /// Called by PlayerMovement.CheckKickContact() and EnemyAI.CheckKickContact().
     /// Returns true if the kick landed (correct direction, not on cooldown).
     /// On success: reverses direction and increases runtime speed.
-    /// The speed increase persists — GameManager only controls BaseSpeed, not _runtimeSpeed.
+    /// The speed increase persists — GameManager only writes BaseSpeed, not _runtimeSpeed.
     /// </summary>
     public bool GetKicked(Vector2 direction)
     {
@@ -194,12 +214,13 @@ public class PipeLogic : MonoBehaviour
         return true;
     }
 
-    /// <summary>Temporarily stops the pipe. Used by power-ups or special events.</summary>
+    /// <summary>
+    /// Temporarily halts the pipe. Intended for future power-up use.
+    /// Saved speed is restored after the duration so no permanent state change occurs.
+    /// </summary>
     public void Freeze(float duration) => StartCoroutine(FreezeCoroutine(duration));
 
-    #endregion
-
-    #region Coroutines
+    // ─── Coroutines ───────────────────────────────────────────────────────────
 
     private IEnumerator KickCooldownRoutine()
     {
@@ -215,6 +236,11 @@ public class PipeLogic : MonoBehaviour
         _hitOnCooldown = false;
     }
 
+    /// <summary>
+    /// Adds the target's instance ID to the cross-pipe protection set for one
+    /// hitCooldown window, then removes it. This prevents two pipes from hitting
+    /// the same character in the same sweep.
+    /// </summary>
     private IEnumerator LockTarget(int instanceId)
     {
         _recentlyHitTargets.Add(instanceId);
@@ -229,6 +255,4 @@ public class PipeLogic : MonoBehaviour
         yield return new WaitForSeconds(duration);
         _runtimeSpeed = saved;
     }
-
-    #endregion
 }
