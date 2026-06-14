@@ -2,11 +2,16 @@ using UnityEngine;
 
 /// <summary>
 /// StateMachineBehaviour attached to kick animation states in the Animator.
-/// Syncs the IsKicking flag on PlayerMovement or EnemyAI when a kick
-/// animation starts and ends.
+/// Keeps the IsKicking flag on PlayerMovement or EnemyAI in sync with the
+/// animation state machine so code outside the animator always knows whether
+/// a kick is visually playing.
 ///
-/// Attach this to: kickRight, kickLeft states on both player and enemy Animators.
-/// No configuration needed — it auto-detects which component is in the hierarchy.
+/// Attach to: kickRight and kickLeft states on both player and enemy Animators.
+/// No Inspector configuration needed — component is auto-detected from the hierarchy.
+///
+/// Naming note: Unity requires the class name to match the filename exactly.
+/// This file is named kickBehaviour.cs to preserve the existing asset references
+/// in the Animator. Rename both together if you want to follow PascalCase.
 /// </summary>
 public class kickBehaviour : StateMachineBehaviour
 {
@@ -16,9 +21,12 @@ public class kickBehaviour : StateMachineBehaviour
     public override void OnStateExit(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
         => SetKicking(animator, false);
 
+    /// <summary>
+    /// Finds the owning character component and updates its IsKicking flag.
+    /// Checks player first (more common) so the enemy branch is only reached on enemy animators.
+    /// </summary>
     private static void SetKicking(Animator animator, bool value)
     {
-        // Player check first — more common, short-circuits before trying enemy
         PlayerMovement player = animator.GetComponentInParent<PlayerMovement>();
         if (player != null) { player.SetKickState(value); return; }
 
