@@ -1,16 +1,24 @@
-﻿using UnityEngine;
+﻿using System.Collections;
+using UnityEngine;
 using UnityEngine.SceneManagement;
 
 /// <summary>
 /// Central game loop driver. Owns difficulty ramp, score, pipe base speed,
 /// second pipe unlock, and game-over flow.
 ///
-/// Pipe speed model: GameManager writes to PipeLogic.BaseSpeed each frame
-/// as the difficulty floor. PipeLogic maintains its own _runtimeSpeed that
-/// kicks and hits modify independently — those changes are never overwritten here.
+/// Pipe speed model:
+///   GameManager writes to PipeLogic.BaseSpeed each frame as the difficulty
+///   floor. PipeLogic keeps its own _runtimeSpeed that kicks and hits modify
+///   independently — those values are never overwritten here.
+///
+/// HUD updates:
+///   Score text is updated only when the score actually changes (AddBonusScore,
+///   distance accumulation) rather than every Update tick, eliminating a
+///   per-frame UIManager call when nothing has changed.
 /// </summary>
 public class GameManager : MonoBehaviour
 {
+    // ─── Singleton ────────────────────────────────────────────────────────────
     public static GameManager instance;
 
     // ─── Difficulty ───────────────────────────────────────────────────────────
@@ -22,12 +30,15 @@ public class GameManager : MonoBehaviour
     public float maxRiseSpeed = 12f;
 
     [Tooltip("How fast virtual speed ramps up per second. " +
-             "0.15 reaches max difficulty in ~67 seconds. 0.05 takes ~200 seconds.")]
+             "0.15 reaches max difficulty in ~67 s. 0.05 takes ~200 s.")]
     public float speedRampRate = 0.15f;
 
     // ─── Pipe Difficulty ──────────────────────────────────────────────────────
     [Header("Pipe Base Speed")]
+    [Tooltip("Main (non-lethal) pipe reference.")]
     public PipeLogic mainPipe;
+
+    [Tooltip("Second (lethal) pipe reference. Inactive until secondPipeUnlockDistance.")]
     public PipeLogic secondPipe;
 
     [Tooltip("Pipe BaseSpeed at difficulty 0. Should feel slow but not trivial.")]
@@ -36,13 +47,18 @@ public class GameManager : MonoBehaviour
     [Tooltip("Pipe BaseSpeed at difficulty 1 (max). Should feel genuinely threatening.")]
     public float maxPipeSpeed = 200f;
 
-    [Tooltip("1 = pipe speed fully tracks difficulty. Lower = pipe stays easier than difficulty suggests.")]
+    [Tooltip("1 = pipe speed fully tracks difficulty. Lower = pipe stays easier than difficulty.")]
     public float pipeSpeedDifficultyScale = 1f;
 
     // ─── Second Pipe ──────────────────────────────────────────────────────────
     [Header("Second Pipe")]
     [Tooltip("Distance accumulated before the second pipe activates.")]
     public float secondPipeUnlockDistance = 150f;
+
+    // ─── Consumables ──────────────────────────────────────────────────────────
+    [Header("Consumables")]
+    [Tooltip("Consumable spawn manager. Assign the ConsumableSpawnManager in the scene.")]
+    public ConsumableSpawnManager consumableSpawnManager;
 
     // ─── Public State ─────────────────────────────────────────────────────────
     public float DistanceTraveled { get; private set; }
@@ -52,7 +68,7 @@ public class GameManager : MonoBehaviour
     public bool IsGameActive { get; private set; } = true;
 
     /// <summary>
-    /// 0→1 difficulty. Single source of truth for all systems.
+    /// 0→1 difficulty curve. Single source of truth for all systems.
     /// Reaches 1 when CurrentRiseSpeed hits maxRiseSpeed.
     /// </summary>
     public float DifficultyNormalized =>
@@ -60,15 +76,18 @@ public class GameManager : MonoBehaviour
 
     // ─── Private ──────────────────────────────────────────────────────────────
     private const string BestScoreKey = "BEST_SCORE";
-    private bool _secondPipeUnlocked;
 
-    #region Unity Lifecycle
+    private bool _secondPipeUnlocked;
+    private int _lastReportedScore;   // Guards against redundant HUD refreshes
+
+    // ─── Unity Lifecycle ──────────────────────────────────────────────────────
 
     private void Awake()
     {
         if (instance == null) instance = this;
-        else Destroy(gameObject);
+        else { Destroy(gameObject); return; }
 
+        // Mobile performance defaults — SettingsPanel may override targetFrameRate later.
         Application.targetFrameRate = 60;
         QualitySettings.vSyncCount = 0;
     }
@@ -81,7 +100,9 @@ public class GameManager : MonoBehaviour
             secondPipe.gameObject.SetActive(false);
 
         SpawnManager.instance.StartSpawning();
-        ConsumableSpawnManager.instance?.StartSpawning();
+        consumableSpawnManager?.StartSpawning();
+
+        // Initial HUD paint.
         UpdateHUD();
 
         SoundManager.Instance?.PlayMusic(MusicType.Gameplay);
@@ -94,12 +115,14 @@ public class GameManager : MonoBehaviour
         RampDifficulty();
         AccumulateDistance();
         CheckSecondPipe();
-        UpdateHUD();
+
+        // Only refresh the HUD when the integer score value has actually changed —
+        // avoids a SetText call every frame when distance hasn't moved a full unit.
+        if (TotalScore != _lastReportedScore)
+            UpdateHUD();
     }
 
-    #endregion
-
-    #region Difficulty
+    // ─── Difficulty ───────────────────────────────────────────────────────────
 
     private void RampDifficulty()
     {
@@ -111,9 +134,8 @@ public class GameManager : MonoBehaviour
         float t = DifficultyNormalized * pipeSpeedDifficultyScale;
         float pipeSpeed = Mathf.Lerp(basePipeSpeed, maxPipeSpeed, t);
 
-        // Write to BaseSpeed — this is the difficulty floor.
-        // PipeLogic._runtimeSpeed handles the live speed and is never touched here,
-        // so kicks and hits keep their effect until they decay naturally.
+        // Write difficulty floor to BaseSpeed.
+        // PipeLogic._runtimeSpeed is never touched here — kicks and hits keep their effect.
         if (mainPipe != null) mainPipe.BaseSpeed = pipeSpeed;
 
         if (_secondPipeUnlocked && secondPipe != null)
@@ -133,13 +155,11 @@ public class GameManager : MonoBehaviour
         _secondPipeUnlocked = true;
         secondPipe.gameObject.SetActive(true);
         SoundManager.Instance?.PlaySFX(SoundType.SecondPipeWarning);
-        //Debug.Log("[GameManager] Second pipe unlocked.");
     }
 
-    #endregion
+    // ─── Score ────────────────────────────────────────────────────────────────
 
-    #region Score
-
+    /// <summary>Awards bonus score points and immediately refreshes the HUD.</summary>
     public void AddBonusScore(int amount)
     {
         if (!IsGameActive) return;
@@ -150,21 +170,24 @@ public class GameManager : MonoBehaviour
     private void UpdateHUD()
     {
         if (UIManager.Instance == null) return;
+        _lastReportedScore = TotalScore;
         UIManager.Instance.UpdateScore(TotalScore);
         UIManager.Instance.UpdateBestScore(PlayerPrefs.GetInt(BestScoreKey, 0));
     }
 
-    #endregion
+    // ─── Game Over ────────────────────────────────────────────────────────────
 
-    #region Game Over
-
+    /// <summary>
+    /// Ends the current run. Disables spawning and pipes, saves best score,
+    /// triggers game-over UI, and freezes time.
+    /// </summary>
     public void EndGame()
     {
         if (!IsGameActive) return;
         IsGameActive = false;
 
         SpawnManager.instance.StopSpawning();
-        ConsumableSpawnManager.instance?.StopSpawning();
+        consumableSpawnManager?.StopSpawning();
 
         if (mainPipe != null) mainPipe.enabled = false;
         if (secondPipe != null) secondPipe.enabled = false;
@@ -188,41 +211,40 @@ public class GameManager : MonoBehaviour
         PlayerPrefs.Save();
     }
 
-    #endregion
-
-    #region Game Feel
+    // ─── Game Feel ────────────────────────────────────────────────────────────
 
     /// <summary>
     /// Brief time-scale freeze for arcade impact feedback.
+    /// Uses unscaled real time so the freeze itself is never affected by timeScale.
     /// Called by PipeLogic on hits and PlayerMovement on kicks.
     /// </summary>
+    /// <param name="timescale">Time scale during the freeze (0.1 = nearly stopped).</param>
+    /// <param name="duration">Real-time seconds to hold the freeze.</param>
     public void TriggerHitStop(float timescale = 0.1f, float duration = 0.04f)
     {
         StartCoroutine(HitStopRoutine(timescale, duration));
     }
 
-    private System.Collections.IEnumerator HitStopRoutine(float timescale, float duration)
+    private IEnumerator HitStopRoutine(float timescale, float duration)
     {
         Time.timeScale = timescale;
         yield return new WaitForSecondsRealtime(duration);
         Time.timeScale = 1f;
     }
 
-    #endregion
+    // ─── Scene Flow ───────────────────────────────────────────────────────────
 
-    #region Scene Flow
-
+    /// <summary>Reloads the current scene, resetting all gameplay state.</summary>
     public void RestartGame()
     {
         Time.timeScale = 1f;
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
 
+    /// <summary>Loads the main menu scene.</summary>
     public void LoadMainMenu()
     {
         Time.timeScale = 1f;
         SceneManager.LoadScene("MainMenuScene");
     }
-
-    #endregion
 }
