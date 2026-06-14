@@ -1,37 +1,40 @@
 using UnityEngine;
 
 /// <summary>
-/// Scriptable Object defining a single enemy spawn configuration.
-/// Used by SpawnManager to support weighted, difficulty-based enemy spawning.
+/// ScriptableObject defining one enemy variant's spawn parameters.
+/// Used by SpawnManager for weighted, difficulty-gated enemy selection.
 ///
 /// Usage:
-///   1. Create a new ScriptableObject asset (Right-click > Create > Enemy Spawn Config)
-///   2. Assign enemy prefab, weight, and difficulty threshold
-///   3. Add to SpawnManager's spawnConfigs list
+///   1. Right-click in Project → Create → Gameplay → Enemy Spawn Config
+///   2. Assign the enemy prefab (must have an EnemyAI component)
+///   3. Set spawnWeight and difficultyThreshold
+///   4. Add the asset to SpawnManager.spawnConfigs in the scene
 /// </summary>
 [CreateAssetMenu(fileName = "EnemySpawnConfig", menuName = "Gameplay/Enemy Spawn Config")]
 public class EnemySpawnConfig : ScriptableObject
 {
-    [Tooltip("Enemy prefab to spawn. Must have EnemyAI component.")]
+    // ─── Inspector ────────────────────────────────────────────────────────────
+    [Tooltip("Enemy prefab to instantiate. Must have an EnemyAI component.")]
     public GameObject enemyPrefab;
 
     [Range(0.1f, 10f)]
-    [Tooltip("Relative spawn weight. Higher = spawns more frequently. Example: weight 2.0 spawns twice as often as weight 1.0.")]
+    [Tooltip("Relative spawn weight. Weight 2 spawns twice as often as weight 1.")]
     public float spawnWeight = 1f;
 
     [Range(0f, 1f)]
-    [Tooltip("Only spawn this enemy when difficulty >= this threshold. 0 = always, 1 = only at max difficulty.")]
+    [Tooltip("Minimum DifficultyNormalized required to include this config in the pool. " +
+             "0 = available from the start. 1 = only at maximum difficulty.")]
     public float difficultyThreshold = 0f;
 
-    [Tooltip("If true, this enemy type is marked as a boss with special behavior bonuses.")]
+    [Tooltip("Marks the spawned enemy as a boss — EnemyAI applies bonus behaviour.")]
     public bool isBoss = false;
 
     [TextArea(2, 4)]
-    [Tooltip("Description for editor reference only — helps organize spawn configs.")]
+    [Tooltip("Editor-only description to help organise configs in large projects.")]
     public string description = "New enemy spawn configuration";
 
-    public bool IsValidForSpawning()
-    {
-        return enemyPrefab != null && spawnWeight > 0f;
-    }
+    // ─── Validation ───────────────────────────────────────────────────────────
+
+    /// <summary>Returns true when the config has a valid prefab and a positive weight.</summary>
+    public bool IsValidForSpawning() => enemyPrefab != null && spawnWeight > 0f;
 }
