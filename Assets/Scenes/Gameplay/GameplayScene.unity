@@ -1589,6 +1589,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FPSCounter
   fpsText: {fileID: 324269339}
+  updateInterval: 0.5
 --- !u!114 &324269339
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2021,15 +2022,15 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 330585543}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 6d4c00f2fc97cc740b157ced9612f67f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CameraController
   player: {fileID: 1493018220}
   offset: {x: 0, y: 5, z: -5}
-  shakeAmount: 1
-  shakeDuration: 1
+  shakeAmount: 0.5
+  shakeDuration: 0.5
 --- !u!4 &336476719 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 5440707293445741943, guid: 494f6d43e170e9145bc7865d243ee00b, type: 3}
@@ -8803,6 +8804,7 @@ MonoBehaviour:
   maxPipeSpeed: 120
   pipeSpeedDifficultyScale: 1
   secondPipeUnlockDistance: 100
+  consumableSpawnManager: {fileID: 0}
 --- !u!4 &1232843544
 Transform:
   m_ObjectHideFlags: 0
@@ -16176,7 +16178,7 @@ PrefabInstance:
       objectReference: {fileID: 92987819}
     - target: {fileID: 4627730203898958434, guid: 2691c09bf36b3cd4787624946ce6a986, type: 3}
       propertyPath: kickRange
-      value: 3
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 4627730203898958434, guid: 2691c09bf36b3cd4787624946ce6a986, type: 3}
       propertyPath: slamForce
