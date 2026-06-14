@@ -1,67 +1,88 @@
-﻿/*
- *  Author: ariel oliveira [o.arielg@gmail.com]
- */
+﻿using UnityEngine;
 
-using UnityEngine;
-
+/// <summary>
+/// Owns the player's health values and fires a change notification whenever
+/// health or max-health changes. All reads and writes go through this class
+/// so every system (UI, consumables, regen) shares a single source of truth.
+///
+/// Singleton accessed via PlayerStats.Instance — one instance per gameplay scene.
+/// The instance is set in Awake, so it is safe to read from any Start() or later.
+///
+/// Inspector setup:
+///   health          — starting HP (e.g. 3)
+///   maxHealth       — current heart-container count (≤ maxTotalHealth)
+///   maxTotalHealth  — absolute cap; also drives HealthBarController array size
+/// </summary>
 public class PlayerStats : MonoBehaviour
 {
-    public delegate void OnHealthChangedDelegate();
-    public OnHealthChangedDelegate onHealthChangedCallback;
+    // ─── Singleton ────────────────────────────────────────────────────────────
+    public static PlayerStats Instance { get; private set; }
 
-    #region Sigleton
-    private static PlayerStats instance;
-    public static PlayerStats Instance
+    // ─── Change Notification ──────────────────────────────────────────────────
+    /// <summary>
+    /// Fired after any health or max-health change.
+    /// Subscribe in OnEnable, unsubscribe in OnDisable or OnDestroy.
+    /// </summary>
+    public event System.Action OnHealthChanged;
+
+    // ─── Serialized Fields ────────────────────────────────────────────────────
+    [Header("Health")]
+    [Tooltip("Starting health. Must be <= maxHealth.")]
+    [SerializeField] private float health = 3f;
+
+    [Tooltip("Current heart-container count. Caps health. Must be <= maxTotalHealth.")]
+    [SerializeField] private float maxHealth = 3f;
+
+    [Tooltip("Absolute upper bound for maxHealth. Also sizes the heart-container array.")]
+    [SerializeField] private float maxTotalHealth = 5f;
+
+    // ─── Public Read API ──────────────────────────────────────────────────────
+    public float Health => health;
+    public float MaxHealth => maxHealth;
+    public float MaxTotalHealth => maxTotalHealth;
+
+    // ─── Unity Lifecycle ──────────────────────────────────────────────────────
+
+    private void Awake()
     {
-        get
+        // Standard singleton — one instance per scene, no DontDestroyOnLoad
+        // (each gameplay scene creates its own fresh instance).
+        if (Instance != null && Instance != this)
         {
-            if (instance == null)
-                instance = Object.FindAnyObjectByType<PlayerStats>();
-            return instance;
+            Destroy(gameObject);
+            return;
         }
-    }
-    #endregion
-
-    [SerializeField]
-    private float health;
-    [SerializeField]
-    private float maxHealth;
-    [SerializeField]
-    private float maxTotalHealth;
-
-    public float Health { get { return health; } }
-    public float MaxHealth { get { return maxHealth; } }
-    public float MaxTotalHealth { get { return maxTotalHealth; } }
-
-    public void Heal(float health)
-    {
-        this.health += health;
-        ClampHealth();
+        Instance = this;
     }
 
-    public void TakeDamage(float dmg)
+    private void OnDestroy()
     {
-        health -= dmg;
-        ClampHealth();
+        // Clear the static reference so a reloaded scene gets a clean start.
+        if (Instance == this) Instance = null;
     }
 
-    public void AddHealth()
-    {
-        if (maxHealth < maxTotalHealth)
-        {
-            maxHealth += 1;
-            health = maxHealth;
+    // ─── Public Write API ─────────────────────────────────────────────────────
 
-            if (onHealthChangedCallback != null)
-                onHealthChangedCallback.Invoke();
-        }   
+    /// <summary>Restores <paramref name="amount"/> HP, clamped to maxHealth.</summary>
+    public void Heal(float amount)
+    {
+        health += amount;
+        ClampAndNotify();
     }
 
-    void ClampHealth()
+    /// <summary>Reduces health by <paramref name="amount"/>, clamped to 0.</summary>
+    public void TakeDamage(float amount)
     {
-        health = Mathf.Clamp(health, 0, maxHealth);
+        health -= amount;
+        ClampAndNotify();
+    }
 
-        if (onHealthChangedCallback != null)
-            onHealthChangedCallback.Invoke();
+    // ─── Private Helpers ──────────────────────────────────────────────────────
+
+    /// <summary>Clamps health to [0, maxHealth] then fires the change event.</summary>
+    private void ClampAndNotify()
+    {
+        health = Mathf.Clamp(health, 0f, maxHealth);
+        OnHealthChanged?.Invoke();
     }
 }
