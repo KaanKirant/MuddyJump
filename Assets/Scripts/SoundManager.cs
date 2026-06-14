@@ -4,43 +4,42 @@ using UnityEngine;
 /// <summary>
 /// Central audio manager. Persists across scenes via DontDestroyOnLoad.
 ///
-/// Two dedicated AudioSources on this GameObject:
-///   _musicSource  — looping, for background music
-///   _sfxSource    — one-shot, for non-overlapping SFX
+/// Audio source layout (all on this GameObject):
+///   _musicSource   — single looping source for background music
+///   _sfxPool[]     — round-robin pool for overlapping one-shot SFX
 ///
-/// A small pool of pooled AudioSources handles overlapping SFX (e.g. rapid
-/// kicks in quick succession). Pool size is configurable in the Inspector.
+/// The round-robin pool prevents rapid sounds (kicks, hits) from cutting
+/// each other off. Pool size is tunable in the Inspector.
 ///
-/// Call from anywhere:
-///   SoundManager.Instance.PlaySFX(SoundType.KickSuccess);
-///   SoundManager.Instance.PlayMusic(MusicType.Gameplay);
+/// Usage from any script:
+///   SoundManager.Instance?.PlaySFX(SoundType.KickSuccess);
+///   SoundManager.Instance?.PlayMusic(MusicType.Gameplay);
 ///
-/// Volume is saved to PlayerPrefs and restored on start.
+/// Volume is persisted to PlayerPrefs and restored on Awake.
+/// SettingsPanel calls SetMusicVolume / SetSFXVolume which handle persistence.
 /// </summary>
 public class SoundManager : MonoBehaviour
 {
+    // ─── Singleton ────────────────────────────────────────────────────────────
     public static SoundManager Instance { get; private set; }
 
-    // ─── Data ─────────────────────────────────────────────────────────────────
+    // ─── Inspector ────────────────────────────────────────────────────────────
     [Header("Sound Data")]
-    [Tooltip("ScriptableObject mapping SoundType/MusicType enums to AudioClips. " +
+    [Tooltip("ScriptableObject mapping SoundType/MusicType to AudioClips. " +
              "Create via Right-click > Audio > Sound Data.")]
     public SoundData soundData;
 
-    // ─── Pool ─────────────────────────────────────────────────────────────────
     [Header("SFX Pool")]
     [Tooltip("Number of pooled AudioSources for overlapping SFX. " +
-             "Increase if rapid sounds get cut off.")]
-    public int sfxPoolSize = 6;
+             "Increase if rapid sounds get cut off (each kick + hit fires in the same frame).")]
+    public int sfxPoolSize = 8;
 
-    // ─── Volume ───────────────────────────────────────────────────────────────
     [Header("Default Volumes")]
     [Range(0f, 1f)] public float defaultMusicVolume = 0.6f;
     [Range(0f, 1f)] public float defaultSFXVolume = 1f;
 
-    // ─── Music Crossfade ──────────────────────────────────────────────────────
     [Header("Music")]
-    [Tooltip("Duration in seconds to fade between music tracks.")]
+    [Tooltip("Seconds for a full crossfade between tracks (half used for fade-out, half for fade-in).")]
     public float musicFadeDuration = 1f;
 
     // ─── Private ──────────────────────────────────────────────────────────────
@@ -53,10 +52,11 @@ public class SoundManager : MonoBehaviour
 
     private Coroutine _musicFadeRoutine;
 
+    // Keys must match SettingsPanel's constants exactly.
     private const string MusicVolumeKey = "MUSIC_VOLUME";
     private const string SFXVolumeKey = "SFX_VOLUME";
 
-    #region Unity Lifecycle
+    // ─── Unity Lifecycle ──────────────────────────────────────────────────────
 
     private void Awake()
     {
@@ -68,18 +68,16 @@ public class SoundManager : MonoBehaviour
         LoadVolumes();
     }
 
-    #endregion
-
-    #region Setup
+    // ─── Setup ────────────────────────────────────────────────────────────────
 
     private void BuildAudioSources()
     {
-        // Dedicated music source
+        // One dedicated looping source for music.
         _musicSource = gameObject.AddComponent<AudioSource>();
         _musicSource.loop = true;
         _musicSource.volume = defaultMusicVolume;
 
-        // SFX pool — round-robin so overlapping sounds don't cut each other off
+        // Pool of one-shot sources — round-robin prevents mutual interruption.
         _sfxPool = new AudioSource[sfxPoolSize];
         for (int i = 0; i < sfxPoolSize; i++)
         {
@@ -89,24 +87,26 @@ public class SoundManager : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Loads persisted volume values from PlayerPrefs and applies them to all sources.
+    /// Called once in Awake — SettingsPanel keeps values updated during the session.
+    /// </summary>
     private void LoadVolumes()
     {
         _musicVolume = PlayerPrefs.GetFloat(MusicVolumeKey, defaultMusicVolume);
         _sfxVolume = PlayerPrefs.GetFloat(SFXVolumeKey, defaultSFXVolume);
-
         _musicSource.volume = _musicVolume;
+
         foreach (AudioSource src in _sfxPool)
             src.volume = _sfxVolume;
     }
 
-    #endregion
-
-    #region Public API — SFX
+    // ─── Public API — SFX ─────────────────────────────────────────────────────
 
     /// <summary>
-    /// Plays a one-shot SFX by type. Uses the round-robin pool so
-    /// overlapping sounds (rapid kicks, hits) all play simultaneously.
-    /// Does nothing if the clip is not assigned in SoundData.
+    /// Plays a one-shot SFX via the round-robin pool.
+    /// Overlapping sounds (e.g. rapid kicks) all play simultaneously.
+    /// No-ops silently when the clip is not assigned in SoundData.
     /// </summary>
     public void PlaySFX(SoundType type)
     {
@@ -122,7 +122,10 @@ public class SoundManager : MonoBehaviour
         src.Play();
     }
 
-    /// <summary>Plays a SFX at a specific world position (uses PlayClipAtPoint — no pool).</summary>
+    /// <summary>
+    /// Plays a one-shot SFX at a world position using Unity's PlayClipAtPoint.
+    /// Bypasses the pool — useful for positional audio on short, non-overlapping clips.
+    /// </summary>
     public void PlaySFXAtPoint(SoundType type, Vector3 position)
     {
         if (soundData == null) return;
@@ -133,13 +136,11 @@ public class SoundManager : MonoBehaviour
         AudioSource.PlayClipAtPoint(entry.clip, position, entry.volume * _sfxVolume);
     }
 
-    #endregion
-
-    #region Public API — Music
+    // ─── Public API — Music ───────────────────────────────────────────────────
 
     /// <summary>
     /// Switches to a new music track with a crossfade.
-    /// If the same track is already playing, does nothing.
+    /// No-ops if the requested track is already playing.
     /// </summary>
     public void PlayMusic(MusicType type)
     {
@@ -148,28 +149,29 @@ public class SoundManager : MonoBehaviour
         MusicEntry entry = soundData.GetMusic(type);
         if (entry?.clip == null) return;
 
-        // Already playing this track — don't restart
+        // Same track already playing — don't restart or re-fade.
         if (_musicSource.clip == entry.clip && _musicSource.isPlaying) return;
 
         if (_musicFadeRoutine != null) StopCoroutine(_musicFadeRoutine);
         _musicFadeRoutine = StartCoroutine(CrossfadeMusic(entry));
     }
 
-    /// <summary>Stops music with a fade out.</summary>
+    /// <summary>Fades out and stops the current music track.</summary>
     public void StopMusic()
     {
         if (_musicFadeRoutine != null) StopCoroutine(_musicFadeRoutine);
         _musicFadeRoutine = StartCoroutine(FadeOutMusic());
     }
 
-    #endregion
-
-    #region Public API — Volume
+    // ─── Public API — Volume ──────────────────────────────────────────────────
 
     public float MusicVolume => _musicVolume;
     public float SFXVolume => _sfxVolume;
 
-    /// <summary>Sets music volume and saves to PlayerPrefs.</summary>
+    /// <summary>
+    /// Sets music volume, applies it to the music source, and persists to PlayerPrefs.
+    /// Called by SettingsPanel's music slider.
+    /// </summary>
     public void SetMusicVolume(float volume)
     {
         _musicVolume = Mathf.Clamp01(volume);
@@ -178,20 +180,29 @@ public class SoundManager : MonoBehaviour
         PlayerPrefs.Save();
     }
 
-    /// <summary>Sets SFX volume and saves to PlayerPrefs.</summary>
+    /// <summary>
+    /// Sets SFX volume, applies it to all pooled sources (including any currently playing),
+    /// and persists to PlayerPrefs. Called by SettingsPanel's SFX slider.
+    /// </summary>
     public void SetSFXVolume(float volume)
     {
         _sfxVolume = Mathf.Clamp01(volume);
+
+        // Update all sources — including ones mid-playback so the change is immediate.
         foreach (AudioSource src in _sfxPool)
             src.volume = _sfxVolume;
+
         PlayerPrefs.SetFloat(SFXVolumeKey, _sfxVolume);
         PlayerPrefs.Save();
     }
 
-    #endregion
+    // ─── Helpers ──────────────────────────────────────────────────────────────
 
-    #region Helpers
-
+    /// <summary>
+    /// Returns the next AudioSource in the round-robin pool.
+    /// If the source is already playing it will be interrupted — increase
+    /// sfxPoolSize if this happens frequently in profiling.
+    /// </summary>
     private AudioSource GetNextPooledSource()
     {
         AudioSource src = _sfxPool[_sfxPoolIndex];
@@ -199,41 +210,51 @@ public class SoundManager : MonoBehaviour
         return src;
     }
 
-    #endregion
+    // ─── Coroutines ───────────────────────────────────────────────────────────
 
-    #region Coroutines
-
+    /// <summary>
+    /// Two-phase crossfade: fade current track to 0, swap clip, fade in the new track.
+    /// Uses unscaledDeltaTime so music transitions work correctly during hit-stop and pause.
+    /// </summary>
     private IEnumerator CrossfadeMusic(MusicEntry entry)
     {
-        // Fade out current track
+        float halfDuration = musicFadeDuration * 0.5f;
+
+        // Phase 1: fade out current track.
         float startVolume = _musicSource.volume;
         float elapsed = 0f;
 
-        while (elapsed < musicFadeDuration * 0.5f)
+        while (elapsed < halfDuration)
         {
             elapsed += Time.unscaledDeltaTime;
-            _musicSource.volume = Mathf.Lerp(startVolume, 0f, elapsed / (musicFadeDuration * 0.5f));
+            _musicSource.volume = Mathf.Lerp(startVolume, 0f, elapsed / halfDuration);
             yield return null;
         }
 
-        // Swap clip and fade in
+        // Phase 2: swap clip and fade in.
         _musicSource.clip = entry.clip;
         _musicSource.volume = 0f;
         _musicSource.Play();
 
-        elapsed = 0f;
         float targetVolume = entry.volume * _musicVolume;
+        elapsed = 0f;
 
-        while (elapsed < musicFadeDuration * 0.5f)
+        while (elapsed < halfDuration)
         {
             elapsed += Time.unscaledDeltaTime;
-            _musicSource.volume = Mathf.Lerp(0f, targetVolume, elapsed / (musicFadeDuration * 0.5f));
+            _musicSource.volume = Mathf.Lerp(0f, targetVolume, elapsed / halfDuration);
             yield return null;
         }
 
         _musicSource.volume = targetVolume;
     }
 
+    /// <summary>
+    /// Fades the current track to silence then stops the AudioSource.
+    /// Restores _musicVolume on the source afterward so a subsequent PlayMusic
+    /// call doesn't start at 0.
+    /// Uses unscaledDeltaTime so it works during pause / hit-stop.
+    /// </summary>
     private IEnumerator FadeOutMusic()
     {
         float startVolume = _musicSource.volume;
@@ -247,8 +268,7 @@ public class SoundManager : MonoBehaviour
         }
 
         _musicSource.Stop();
+        // Restore baseline volume so the next PlayMusic fades in from the correct target.
         _musicSource.volume = _musicVolume;
     }
-
-    #endregion
 }
