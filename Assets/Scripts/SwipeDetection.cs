@@ -3,39 +3,66 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 /// <summary>
-/// Detects touch/mouse swipes and fires SwipePerformed with a normalised direction.
-/// Execution order -100 ensures this runs before any subscriber (PlayerMovement etc.)
-/// so input is never missed on the first frame.
+/// Detects touch/mouse swipes and fires SwipePerformed with a normalised 2D direction.
+///
+/// Uses Unity's new Input System with two serialized InputActions:
+///   position — reads the current pointer/touch position (Vector2)
+///   press    — fires performed on press-down and canceled on release
+///
+/// A swipe is only registered when the pointer travels at least swipeResistance
+/// pixels between press-down and release. This threshold prevents taps from being
+/// misread as micro-swipes.
+///
+/// [DefaultExecutionOrder(-100)] ensures this runs before any subscriber
+/// (PlayerMovement, etc.) so no swipe event is ever missed on the first frame.
+///
+/// Inspector setup:
+///   Assign the position and press InputActions from your PlayerInputActions asset.
+///   swipeResistance — tune for target device screen density (100 px is typical).
 /// </summary>
 [DefaultExecutionOrder(-100)]
 public class SwipeDetection : MonoBehaviour
 {
+    // ─── Singleton ────────────────────────────────────────────────────────────
     public static SwipeDetection Instance { get; private set; }
 
-    /// <summary>Normalised swipe direction. Subscribe in OnEnable, unsubscribe in OnDisable.</summary>
+    // ─── Events ───────────────────────────────────────────────────────────────
+    /// <summary>
+    /// Fired when a valid swipe is detected. Argument is the normalised swipe direction.
+    /// Subscribe in OnEnable, unsubscribe in OnDisable.
+    /// </summary>
     public event Action<Vector2> SwipePerformed;
 
+    // ─── Inspector ────────────────────────────────────────────────────────────
     [Header("Input Actions")]
-    [SerializeField] private InputAction position;  // Pointer position (Touchscreen/Mouse)
-    [SerializeField] private InputAction press;     // Pointer press (started = down, canceled = up)
+    [Tooltip("Pointer position action (Touchscreen primaryTouch/position or Mouse/position).")]
+    [SerializeField] private InputAction position;
+
+    [Tooltip("Pointer press action (Touchscreen primaryTouch/press or Mouse/leftButton).")]
+    [SerializeField] private InputAction press;
 
     [Header("Swipe Settings")]
     [Tooltip("Minimum pixel distance the finger must travel to register as a swipe.")]
     [SerializeField] private float swipeResistance = 100f;
 
+    // ─── Private ──────────────────────────────────────────────────────────────
     private Vector2 _initialPos;
     private bool _isPressed;
 
-    // Cached sqr threshold — avoids recomputing every release
-    private float SwipeResistanceSqr => swipeResistance * swipeResistance;
+    /// <summary>
+    /// Pre-squared threshold — avoids recomputing every release.
+    /// Cached in Awake because swipeResistance is an Inspector field (never changes at runtime).
+    /// </summary>
+    private float _swipeResistanceSqr;
 
-    #region Unity Lifecycle
+    // ─── Unity Lifecycle ──────────────────────────────────────────────────────
 
     private void Awake()
     {
-        // Singleton — destroy duplicate if reloaded
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
+
+        _swipeResistanceSqr = swipeResistance * swipeResistance;
     }
 
     private void OnEnable()
@@ -49,7 +76,7 @@ public class SwipeDetection : MonoBehaviour
 
     private void OnDisable()
     {
-        // Always unsubscribe — prevents ghost callbacks after scene unload
+        // Always unsubscribe before disabling — prevents phantom callbacks after scene unload.
         press.performed -= OnPressStarted;
         press.canceled -= OnPressReleased;
 
@@ -57,9 +84,7 @@ public class SwipeDetection : MonoBehaviour
         press.Disable();
     }
 
-    #endregion
-
-    #region Input Handlers
+    // ─── Input Handlers ───────────────────────────────────────────────────────
 
     private void OnPressStarted(InputAction.CallbackContext _)
     {
@@ -69,21 +94,23 @@ public class SwipeDetection : MonoBehaviour
 
     private void OnPressReleased(InputAction.CallbackContext _)
     {
-        // Guard: canceled can fire without a prior performed on scene reload
+        // Guard: canceled can fire without a prior performed on scene reload.
         if (!_isPressed) return;
         _isPressed = false;
         DetectSwipe();
     }
 
+    /// <summary>
+    /// Compares release position against press position.
+    /// Fires SwipePerformed only when the travel distance clears the threshold.
+    /// Uses sqrMagnitude to avoid a sqrt on every release.
+    /// </summary>
     private void DetectSwipe()
     {
         Vector2 delta = position.ReadValue<Vector2>() - _initialPos;
 
-        // sqrMagnitude avoids a sqrt — cheaper than magnitude on mobile
-        if (delta.sqrMagnitude < SwipeResistanceSqr) return;
+        if (delta.sqrMagnitude < _swipeResistanceSqr) return;
 
         SwipePerformed?.Invoke(delta.normalized);
     }
-
-    #endregion
 }
