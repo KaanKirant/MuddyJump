@@ -110,7 +110,7 @@ public class SoundEntry
     [Tooltip("Playback volume. Multiplied by the master SFX volume at runtime.")]
     public float volume = 1f;
 
-    [Range(-3f, 3f)]
+    [Range(0.1f, 3f)]
     [Tooltip("Base pitch. 1 = normal speed. Adjust per-clip for size/weight impression.")]
     public float pitch = 1f;
 

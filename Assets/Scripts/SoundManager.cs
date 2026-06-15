@@ -118,7 +118,8 @@ public class SoundManager : MonoBehaviour
         AudioSource src = GetNextPooledSource();
         src.clip = entry.clip;
         src.volume = entry.volume * _sfxVolume;
-        src.pitch = entry.pitch + Random.Range(-entry.pitchVariance, entry.pitchVariance);
+        src.pitch = Mathf.Max(entry.pitch + Random.Range(-entry.pitchVariance, entry.pitchVariance),0.01f);  // never allow 0 — silences the AudioSource
+
         src.Play();
     }
 
