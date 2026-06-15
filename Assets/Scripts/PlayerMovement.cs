@@ -322,6 +322,7 @@ public class PlayerMovement : MonoBehaviour
             SoundManager.Instance?.PlaySFX(SoundType.ShieldBreak);
             Camera.main?.GetComponent<CameraController>()?.TriggerShake(0.1f, 0.25f);
             GameManager.instance?.TriggerHitStop(0.15f, 0.05f);
+            VibrationManager.ShieldBreak();
             return;
         }
 
@@ -356,6 +357,7 @@ public class PlayerMovement : MonoBehaviour
             SoundManager.Instance?.PlaySFX(SoundType.ShieldBreak);
             Camera.main?.GetComponent<CameraController>()?.TriggerShake(0.1f, 0.25f);
             GameManager.instance?.TriggerHitStop(0.15f, 0.05f);
+            VibrationManager.ShieldBreak();
             return;
         }
 

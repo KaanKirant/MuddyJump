@@ -136,6 +136,7 @@ public class PipeLogic : MonoBehaviour
                 PlayHitReaction(collision.gameObject);
                 player.TakeDamage(1);
                 SoundManager.Instance?.PlaySFX(SoundType.PipeHitPlayer);
+                VibrationManager.PipeHit();
                 ResolveHit();
             }
 
