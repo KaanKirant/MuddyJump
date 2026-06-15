@@ -11,6 +11,7 @@ public enum SoundType
     KickMiss,           // Player swipes but the kick window closes with no contact
     PlayerDamage,       // Pipe hits player (non-lethal)
     PlayerDeath,        // Player dies — lethal pipe or last heart
+    PlayerJump,         // Player jumps
 
     // ─── Pipe ─────────────────────────────────────────────────────────────────
     PipeHitPlayer,      // Pipe strikes the player

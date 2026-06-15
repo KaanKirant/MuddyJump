@@ -1252,7 +1252,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 1d9966a2c550d264eb7e1165c13c9665, type: 2}
   spawnPoints:
   - {fileID: 1312094828}
-  spawnInterval: 20
+  spawnInterval: 15
   spawnHeightOffset: 4
   consumableLifetime: 7
 --- !u!4 &276180395
@@ -7669,55 +7669,6 @@ Transform:
   - {fileID: 2073533539}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &1105479703
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1105479704}
-  - component: {fileID: 1105479705}
-  m_Layer: 0
-  m_Name: SoundManager
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &1105479704
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1105479703}
-  serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1105479705
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1105479703}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4343de3a430fd9e46ab76c24dcee7ffe, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::SoundManager
-  soundData: {fileID: 11400000, guid: 967a62f92c48af346b8934eaa386f9c5, type: 2}
-  sfxPoolSize: 6
-  defaultMusicVolume: 0.6
-  defaultSFXVolume: 1
-  musicFadeDuration: 1
 --- !u!1001 &1107253042
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -8797,14 +8748,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GameManager
   baseRiseSpeed: 2
   maxRiseSpeed: 12
-  speedRampRate: 0.05
+  speedRampRate: 0.2
   mainPipe: {fileID: 860760859}
   secondPipe: {fileID: 2073533541}
-  basePipeSpeed: 50
-  maxPipeSpeed: 120
+  basePipeSpeed: 70
+  maxPipeSpeed: 220
   pipeSpeedDifficultyScale: 1
   secondPipeUnlockDistance: 100
-  consumableSpawnManager: {fileID: 0}
+  consumableSpawnManager: {fileID: 276180394}
 --- !u!4 &1232843544
 Transform:
   m_ObjectHideFlags: 0
@@ -16276,7 +16227,6 @@ SceneRoots:
   - {fileID: 1515570689}
   - {fileID: 771742674}
   - {fileID: 1097320225}
-  - {fileID: 1105479704}
   - {fileID: 1232843544}
   - {fileID: 1252781232}
   - {fileID: 978224010}
