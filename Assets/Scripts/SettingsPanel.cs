@@ -142,7 +142,7 @@ public class SettingsPanel : MonoBehaviour
         if (_initialising) return;
         SoundManager.Instance?.SetMusicVolume(value);  // SoundManager saves to PlayerPrefs internally.
         UpdateMusicLabel(value);
-        SoundManager.Instance?.PlaySFX(SoundType.UIClick);
+        //SoundManager.Instance?.PlaySFX(SoundType.UIClick);
     }
 
     private void UpdateMusicLabel(float value)
@@ -158,7 +158,7 @@ public class SettingsPanel : MonoBehaviour
         if (_initialising) return;
         SoundManager.Instance?.SetSFXVolume(value);    // SoundManager saves to PlayerPrefs internally.
         UpdateSFXLabel(value);
-        SoundManager.Instance?.PlaySFX(SoundType.UIClick);
+        //SoundManager.Instance?.PlaySFX(SoundType.UIClick);
     }
 
     private void UpdateSFXLabel(float value)
