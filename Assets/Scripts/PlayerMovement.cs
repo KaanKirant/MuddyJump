@@ -451,7 +451,7 @@ public class PlayerMovement : MonoBehaviour
     private IEnumerator InvincibilityRoutine(float duration)
     {
         IsInvincible = true;
-        yield return new WaitForSeconds(duration);
+        yield return new WaitForSecondsRealtime(duration);
         IsInvincible = false;
     }
 

@@ -16151,6 +16151,10 @@ PrefabInstance:
       propertyPath: kickHeightOffset
       value: 0.5
       objectReference: {fileID: 0}
+    - target: {fileID: 4627730203898958434, guid: 2691c09bf36b3cd4787624946ce6a986, type: 3}
+      propertyPath: hitInvincibilityDuration
+      value: 0.5
+      objectReference: {fileID: 0}
     - target: {fileID: 5172270906047770535, guid: 2691c09bf36b3cd4787624946ce6a986, type: 3}
       propertyPath: m_Size.x
       value: 4.935237
