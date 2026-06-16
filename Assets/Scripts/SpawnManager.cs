@@ -211,9 +211,8 @@ public class SpawnManager : MonoBehaviour
         EnemyAI ai = enemy.GetComponent<EnemyAI>();
         if (ai != null)
         {
-            int scaledHealth = baseEnemyHealth + Mathf.RoundToInt(healthScaleBonus * difficulty);
-            ai.Health = scaledHealth;
-            ai.MaxHealth = scaledHealth;  // Keep maxHealth in sync for the health bar.
+            ai.Health = baseEnemyHealth;
+            ai.MaxHealth = baseEnemyHealth;  // Keep maxHealth in sync for the health bar.
             ai.isBoss = selected.isBoss;
         }
 
