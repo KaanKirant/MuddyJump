@@ -41,13 +41,10 @@ public class SpawnManager : MonoBehaviour
     [Tooltip("Seconds between spawns at difficulty 1 (max). Also used as the death-replacement cooldown.")]
     public float minSpawnInterval = 0.8f;
 
-    // ─── Enemy Health Scaling ─────────────────────────────────────────────────
-    [Header("Enemy Scaling")]
-    [Tooltip("Base HP assigned to every enemy at difficulty 0.")]
-    public int baseEnemyHealth = 3;
-
-    [Tooltip("Max bonus HP added at full difficulty. Scales linearly from 0 → this value.")]
-    public int healthScaleBonus = 4;
+    // ─── Enemy Health ─────────────────────────────────────────────────────────
+    [Header("Enemy Health")]
+    [Tooltip("HP assigned to every enemy. Fixed — does not scale with difficulty.")]
+    public int enemyHealth = 3;
 
     // ─── Spawn Overlap ────────────────────────────────────────────────────────
     [Header("Spawn Overlap")]
@@ -211,8 +208,8 @@ public class SpawnManager : MonoBehaviour
         EnemyAI ai = enemy.GetComponent<EnemyAI>();
         if (ai != null)
         {
-            ai.Health = baseEnemyHealth;
-            ai.MaxHealth = baseEnemyHealth;  // Keep maxHealth in sync for the health bar.
+            ai.Health = enemyHealth;
+            ai.MaxHealth = enemyHealth;
             ai.isBoss = selected.isBoss;
         }
 

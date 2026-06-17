@@ -6,15 +6,22 @@ using UnityEngine.SceneManagement;
 /// Central game loop driver. Owns difficulty ramp, score, pipe base speed,
 /// second pipe unlock, and game-over flow.
 ///
+/// Difficulty model:
+///   DifficultyNormalized (0→1) is driven purely by time elapsed.
+///   It reaches 1 at timeToMaxDifficulty seconds. All systems read this
+///   single value — no virtual platform speed, no distance accumulation
+///   used for difficulty purposes.
+///
+/// Score:
+///   Score is time-based (seconds survived) plus BonusScore from kicks/kills.
+///
 /// Pipe speed model:
 ///   GameManager writes to PipeLogic.BaseSpeed each frame as the difficulty
 ///   floor. PipeLogic keeps its own _runtimeSpeed that kicks and hits modify
 ///   independently — those values are never overwritten here.
 ///
 /// HUD updates:
-///   Score text is updated only when the score actually changes (AddBonusScore,
-///   distance accumulation) rather than every Update tick, eliminating a
-///   per-frame UIManager call when nothing has changed.
+///   Score text updates only when the integer score changes — not every frame.
 /// </summary>
 public class GameManager : MonoBehaviour
 {
@@ -23,37 +30,27 @@ public class GameManager : MonoBehaviour
 
     // ─── Difficulty ───────────────────────────────────────────────────────────
     [Header("Difficulty")]
-    [Tooltip("Virtual speed at game start. Used only for DifficultyNormalized calculation.")]
-    public float baseRiseSpeed = 2f;
+    [Tooltip("Seconds to reach maximum difficulty (DifficultyNormalized = 1).")]
+    public float timeToMaxDifficulty = 120f;
 
-    [Tooltip("Virtual speed at max difficulty.")]
-    public float maxRiseSpeed = 12f;
-
-    [Tooltip("How fast virtual speed ramps up per second. " +
-             "0.15 reaches max difficulty in ~67 s. 0.05 takes ~200 s.")]
-    public float speedRampRate = 0.15f;
-
-    // ─── Pipe Difficulty ──────────────────────────────────────────────────────
-    [Header("Pipe Base Speed")]
+    // ─── Pipe Speed ───────────────────────────────────────────────────────────
+    [Header("Pipe Speed")]
     [Tooltip("Main (non-lethal) pipe reference.")]
     public PipeLogic mainPipe;
 
-    [Tooltip("Second (lethal) pipe reference. Inactive until secondPipeUnlockDistance.")]
+    [Tooltip("Second (lethal) pipe reference. Inactive until secondPipeUnlockTime.")]
     public PipeLogic secondPipe;
 
     [Tooltip("Pipe BaseSpeed at difficulty 0. Should feel slow but not trivial.")]
-    public float basePipeSpeed = 60f;
+    public float basePipeSpeed = 70f;
 
     [Tooltip("Pipe BaseSpeed at difficulty 1 (max). Should feel genuinely threatening.")]
-    public float maxPipeSpeed = 200f;
-
-    [Tooltip("1 = pipe speed fully tracks difficulty. Lower = pipe stays easier than difficulty.")]
-    public float pipeSpeedDifficultyScale = 1f;
+    public float maxPipeSpeed = 220f;
 
     // ─── Second Pipe ──────────────────────────────────────────────────────────
     [Header("Second Pipe")]
-    [Tooltip("Distance accumulated before the second pipe activates.")]
-    public float secondPipeUnlockDistance = 150f;
+    [Tooltip("Seconds elapsed before the second pipe activates.")]
+    public float secondPipeUnlockTime = 60f;
 
     // ─── Consumables ──────────────────────────────────────────────────────────
     [Header("Consumables")]
@@ -61,24 +58,23 @@ public class GameManager : MonoBehaviour
     public ConsumableSpawnManager consumableSpawnManager;
 
     // ─── Public State ─────────────────────────────────────────────────────────
-    public float DistanceTraveled { get; private set; }
     public int BonusScore { get; private set; }
-    public int TotalScore => Mathf.FloorToInt(DistanceTraveled) + BonusScore;
-    public float CurrentRiseSpeed { get; private set; }
+    public int TotalScore => Mathf.FloorToInt(_timeElapsed) + BonusScore;
     public bool IsGameActive { get; private set; } = true;
 
     /// <summary>
     /// 0→1 difficulty curve. Single source of truth for all systems.
-    /// Reaches 1 when CurrentRiseSpeed hits maxRiseSpeed.
+    /// Driven purely by time — reaches 1 at timeToMaxDifficulty seconds.
     /// </summary>
     public float DifficultyNormalized =>
-        Mathf.InverseLerp(baseRiseSpeed, maxRiseSpeed, CurrentRiseSpeed);
+        Mathf.Clamp01(_timeElapsed / timeToMaxDifficulty);
 
     // ─── Private ──────────────────────────────────────────────────────────────
     private const string BestScoreKey = "BEST_SCORE";
 
+    private float _timeElapsed;
     private bool _secondPipeUnlocked;
-    private int _lastReportedScore;   // Guards against redundant HUD refreshes
+    private int _lastReportedScore;  // Guards against redundant HUD refreshes
 
     // ─── Unity Lifecycle ──────────────────────────────────────────────────────
 
@@ -87,22 +83,19 @@ public class GameManager : MonoBehaviour
         if (instance == null) instance = this;
         else { Destroy(gameObject); return; }
 
-        // Mobile performance defaults — SettingsPanel may override targetFrameRate later.
+        // Mobile performance defaults — SettingsPanel may override targetFrameRate.
         Application.targetFrameRate = 60;
         QualitySettings.vSyncCount = 0;
     }
 
     private void Start()
     {
-        CurrentRiseSpeed = baseRiseSpeed;
-
         if (secondPipe != null)
             secondPipe.gameObject.SetActive(false);
 
         SpawnManager.instance.StartSpawning();
         consumableSpawnManager?.StartSpawning();
 
-        // Initial HUD paint.
         UpdateHUD();
 
         SoundManager.Instance?.PlayMusic(MusicType.Gameplay);
@@ -112,45 +105,35 @@ public class GameManager : MonoBehaviour
     {
         if (!IsGameActive) return;
 
-        RampDifficulty();
-        AccumulateDistance();
+        _timeElapsed += Time.deltaTime;
+
+        UpdatePipeSpeed();
         CheckSecondPipe();
 
-        // Only refresh the HUD when the integer score value has actually changed —
-        // avoids a SetText call every frame when distance hasn't moved a full unit.
         if (TotalScore != _lastReportedScore)
             UpdateHUD();
     }
 
     // ─── Difficulty ───────────────────────────────────────────────────────────
 
-    private void RampDifficulty()
+    /// <summary>
+    /// Writes the current difficulty-scaled speed to PipeLogic.BaseSpeed every frame.
+    /// PipeLogic._runtimeSpeed handles live modifications from kicks and hits
+    /// and is never touched here.
+    /// </summary>
+    private void UpdatePipeSpeed()
     {
-        CurrentRiseSpeed = Mathf.Min(
-            CurrentRiseSpeed + speedRampRate * Time.deltaTime,
-            maxRiseSpeed
-        );
+        float pipeSpeed = Mathf.Lerp(basePipeSpeed, maxPipeSpeed, DifficultyNormalized);
 
-        float t = DifficultyNormalized * pipeSpeedDifficultyScale;
-        float pipeSpeed = Mathf.Lerp(basePipeSpeed, maxPipeSpeed, t);
-
-        // Write difficulty floor to BaseSpeed.
-        // PipeLogic._runtimeSpeed is never touched here — kicks and hits keep their effect.
         if (mainPipe != null) mainPipe.BaseSpeed = pipeSpeed;
-
         if (_secondPipeUnlocked && secondPipe != null)
             secondPipe.BaseSpeed = pipeSpeed;
-    }
-
-    private void AccumulateDistance()
-    {
-        DistanceTraveled += CurrentRiseSpeed * Time.deltaTime;
     }
 
     private void CheckSecondPipe()
     {
         if (_secondPipeUnlocked || secondPipe == null) return;
-        if (DistanceTraveled < secondPipeUnlockDistance) return;
+        if (_timeElapsed < secondPipeUnlockTime) return;
 
         _secondPipeUnlocked = true;
         secondPipe.gameObject.SetActive(true);
