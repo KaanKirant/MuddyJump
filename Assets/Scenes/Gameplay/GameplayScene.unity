@@ -1556,7 +1556,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &324269337
 RectTransform:
   m_ObjectHideFlags: 0
@@ -2015,6 +2015,7 @@ MonoBehaviour:
       m_Flags: 0
     m_Flags: 0
   swipeResistance: 100
+  enableKeyboardInput: 1
 --- !u!114 &330585549
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -8746,15 +8747,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9d987a0eacf2c8c4db969898eb0a291c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GameManager
-  baseRiseSpeed: 2
-  maxRiseSpeed: 12
-  speedRampRate: 0.2
+  timeToMaxDifficulty: 120
   mainPipe: {fileID: 860760859}
   secondPipe: {fileID: 2073533541}
   basePipeSpeed: 70
   maxPipeSpeed: 220
-  pipeSpeedDifficultyScale: 1
-  secondPipeUnlockDistance: 100
+  secondPipeUnlockTime: 60
   consumableSpawnManager: {fileID: 276180394}
 --- !u!4 &1232843544
 Transform:
@@ -8895,8 +8893,7 @@ MonoBehaviour:
   maxEnemiesAlive: 3
   baseSpawnInterval: 3
   minSpawnInterval: 2
-  baseEnemyHealth: 3
-  healthScaleBonus: 4
+  enemyHealth: 3
   occupiedRadius: 2.5
 --- !u!4 &1252781232
 Transform:
