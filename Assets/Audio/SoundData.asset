@@ -88,6 +88,11 @@ MonoBehaviour:
     volume: 0.298
     pitch: 1
     pitchVariance: 0
+  - type: 5
+    clip: {fileID: 8300000, guid: fe0b1f9aeb45b41b089175aeeabd5d95, type: 3}
+    volume: 0.298
+    pitch: 1
+    pitchVariance: 0
   musicEntries:
   - type: 0
     clip: {fileID: 8300000, guid: 5b60ee5f20fbded4fb57a6c08e616af0, type: 3}
