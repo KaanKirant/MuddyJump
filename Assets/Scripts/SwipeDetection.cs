@@ -13,6 +13,12 @@ using UnityEngine.InputSystem;
 /// pixels between press-down and release. This threshold prevents taps from being
 /// misread as micro-swipes.
 ///
+/// Keyboard support (for WebGL/desktop builds, e.g. itch.io):
+///   Arrow keys and WASD both raise the same SwipePerformed event with a unit
+///   direction vector, so every downstream listener (PlayerMovement, tutorial,
+///   etc.) needs zero changes — keyboard input is indistinguishable from a swipe.
+///   W/Up = jump, S/Down = fast fall, D/Right = kick right, A/Left = kick left.
+///
 /// [DefaultExecutionOrder(-100)] ensures this runs before any subscriber
 /// (PlayerMovement, etc.) so no swipe event is ever missed on the first frame.
 ///
@@ -28,8 +34,8 @@ public class SwipeDetection : MonoBehaviour
 
     // ─── Events ───────────────────────────────────────────────────────────────
     /// <summary>
-    /// Fired when a valid swipe is detected. Argument is the normalised swipe direction.
-    /// Subscribe in OnEnable, unsubscribe in OnDisable.
+    /// Fired when a valid swipe — or equivalent keyboard press — is detected.
+    /// Argument is the normalised direction. Subscribe in OnEnable, unsubscribe in OnDisable.
     /// </summary>
     public event Action<Vector2> SwipePerformed;
 
@@ -44,6 +50,10 @@ public class SwipeDetection : MonoBehaviour
     [Header("Swipe Settings")]
     [Tooltip("Minimum pixel distance the finger must travel to register as a swipe.")]
     [SerializeField] private float swipeResistance = 100f;
+
+    [Header("Keyboard Settings")]
+    [Tooltip("Enable arrow key / WASD input as an alternative to swipes. Intended for WebGL/desktop builds.")]
+    [SerializeField] private bool enableKeyboardInput = true;
 
     // ─── Private ──────────────────────────────────────────────────────────────
     private Vector2 _initialPos;
@@ -82,6 +92,32 @@ public class SwipeDetection : MonoBehaviour
 
         position.Disable();
         press.Disable();
+    }
+
+    private void Update()
+    {
+        if (enableKeyboardInput) PollKeyboard();
+    }
+
+    // ─── Keyboard Input ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Polls arrow keys and WASD via the legacy Input class (works alongside the
+    /// new Input System without requiring a separate InputAction asset entry).
+    /// Fires the same SwipePerformed event a touch swipe would, on key-down only.
+    /// </summary>
+    private void PollKeyboard()
+    {
+        if (Keyboard.current == null) return;
+
+        if (Keyboard.current.upArrowKey.wasPressedThisFrame || Keyboard.current.wKey.wasPressedThisFrame)
+            SwipePerformed?.Invoke(Vector2.up);
+        else if (Keyboard.current.downArrowKey.wasPressedThisFrame || Keyboard.current.sKey.wasPressedThisFrame)
+            SwipePerformed?.Invoke(Vector2.down);
+        else if (Keyboard.current.rightArrowKey.wasPressedThisFrame || Keyboard.current.dKey.wasPressedThisFrame)
+            SwipePerformed?.Invoke(Vector2.right);
+        else if (Keyboard.current.leftArrowKey.wasPressedThisFrame || Keyboard.current.aKey.wasPressedThisFrame)
+            SwipePerformed?.Invoke(Vector2.left);
     }
 
     // ─── Input Handlers ───────────────────────────────────────────────────────
